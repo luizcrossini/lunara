@@ -342,11 +342,19 @@ function getDashboardStatus(status: string) {
   };
 
   if (status === "COMPLETED") {
-    return { label: labels[status], backgroundColor: COLORS.successLight, color: COLORS.success };
+    return {
+      label: labels[status],
+      backgroundColor: COLORS.successLight,
+      color: COLORS.success,
+    };
   }
 
   if (status === "NO_SHOW" || status === "CANCELLED") {
-    return { label: labels[status], backgroundColor: COLORS.dangerLight, color: COLORS.danger };
+    return {
+      label: labels[status],
+      backgroundColor: COLORS.dangerLight,
+      color: COLORS.danger,
+    };
   }
 
   return {
@@ -523,7 +531,9 @@ export default function OwnerDashboard() {
   const metricItems = [
     {
       label: "Faturamento",
-      value: formatCurrency(Number(summary.revenue ?? summary.totalRevenue ?? 0)),
+      value: formatCurrency(
+        Number(summary.revenue ?? summary.totalRevenue ?? 0),
+      ),
       icon: "cash-outline" as const,
     },
     {
@@ -557,10 +567,6 @@ export default function OwnerDashboard() {
               resizeMode="contain"
               accessibilityLabel="Logo da LUNARA"
             />
-            <View style={styles.brandTextWrap}>
-              <Text style={styles.brand}>LUNARA</Text>
-              <Text style={styles.brandCaption}>COMMAND CENTER</Text>
-            </View>
           </View>
 
           <Pressable style={styles.logoutButton} onPress={signOut} hitSlop={8}>
@@ -579,7 +585,7 @@ export default function OwnerDashboard() {
 
           <Pressable
             style={styles.heroButton}
-            onPress={() => router.push("/appointments" as never)}
+            onPress={() => router.push("/dashboard/appointments" as never)}
           >
             <Text style={styles.heroButtonText}>Abrir agenda</Text>
             <Ionicons name="arrow-forward" size={17} color={COLORS.primary} />
@@ -662,7 +668,9 @@ export default function OwnerDashboard() {
                 <Text style={styles.eyebrow}>AGENDA</Text>
                 <Text style={styles.sectionTitle}>Próximos atendimentos</Text>
               </View>
-              <Pressable onPress={() => router.push("/dashboard/appointments" as never)}>
+              <Pressable
+                onPress={() => router.push("/dashboard/appointments" as never)}
+              >
                 <Text style={styles.link}>Ver todos →</Text>
               </Pressable>
             </View>
@@ -746,7 +754,7 @@ export default function OwnerDashboard() {
 
               {[
                 ["add-circle-outline", "Novo agendamento", "/appointments/new"],
-                ["people-outline", "Profissionais", "/professionals"],
+                ["people-outline", "Profissionais", "/dashboard/professionals"],
                 ["sparkles-outline", "Serviços", "/services"],
                 ["person-outline", "Clientes", "/customers"],
               ].map(([icon, label, path]) => (
@@ -821,8 +829,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   logoImage: {
-    width: 46,
-    height: 46,
+    width: 70,
+    height: 70,
     maxWidth: 170,
   },
   brandTextWrap: {

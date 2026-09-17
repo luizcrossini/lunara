@@ -53,7 +53,15 @@ export interface StoredAuthSession {
  * - Android
  * - iOS
  */
+const BRANCH_ID_KEY = "lunara_branch_id";
 
+async function saveBranchId(branchId: string) {
+  await SecureStore.setItemAsync(BRANCH_ID_KEY, branchId);
+}
+
+async function getBranchId() {
+  return SecureStore.getItemAsync(BRANCH_ID_KEY);
+}
 async function setItem(key: string, value: string): Promise<void> {
   if (Platform.OS === "web") {
     localStorage.setItem(key, value);

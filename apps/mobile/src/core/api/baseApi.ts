@@ -21,6 +21,7 @@ const baseQueryWithAuth: BaseQueryFn<
 
   const accessToken = session?.accessToken;
   const companyId = session?.companyId;
+  const branchId = session?.branchId;
 
   const requestArgs: FetchArgs =
     typeof args === "string"
@@ -41,13 +42,18 @@ const baseQueryWithAuth: BaseQueryFn<
 
   /*
    * CONTEXTO DA EMPRESA
-   *
-   * O backend utiliza o x-company-id para determinar
-   * em qual tenant a requisição está sendo executada.
    */
 
   if (companyId) {
     headers.set("x-company-id", companyId);
+  }
+
+  /*
+   * CONTEXTO DA FILIAL
+   */
+
+  if (branchId) {
+    headers.set("x-branch-id", branchId);
   }
 
   return rawBaseQuery(

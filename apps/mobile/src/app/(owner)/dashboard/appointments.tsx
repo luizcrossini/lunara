@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   Modal,
   Pressable,
   RefreshControl,
@@ -263,6 +264,29 @@ function money(value?: number) {
   }).format(Number(value ?? 0));
 }
 
+function getWhatsAppUrl(phone?: string | null) {
+  const digits = String(phone ?? "").replace(/\\D/g, "");
+  if (!digits) return null;
+
+  const normalized = digits.startsWith("55") ? digits : `55${digits}`;
+
+  return `https://wa.me/${normalized}`;
+}
+
+async function openWhatsApp(phone?: string | null) {
+  const url = getWhatsAppUrl(phone);
+  if (!url) {
+    Alert.alert("WhatsApp", "Telefone do cliente não informado.");
+    return;
+  }
+
+  try {
+    await Linking.openURL(url);
+  } catch {
+    Alert.alert("WhatsApp", "Não foi possível abrir o WhatsApp.");
+  }
+}
+
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
     CONFIRMED: "Confirmado",
@@ -324,9 +348,23 @@ function AppointmentRow({
 
       <View style={styles.appointmentMain}>
         <View style={styles.appointmentTopLine}>
-          <Text style={styles.customerName} numberOfLines={1}>
-            {appointment.customer?.name ?? "Cliente não informado"}
-          </Text>
+          <View style={styles.customerNameRow}>
+            <Text style={styles.customerName} numberOfLines={1}>
+              {appointment.customer?.name ?? "Cliente não informado"}
+            </Text>
+
+            {getWhatsAppUrl(appointment.customer?.phone) ? (
+              <Pressable
+                style={styles.whatsappButton}
+                hitSlop={8}
+                onPress={() => openWhatsApp(appointment.customer?.phone)}
+                accessibilityRole="button"
+                accessibilityLabel="Conversar com cliente pelo WhatsApp"
+              >
+                <Ionicons name="logo-whatsapp" size={17} color="#25D366" />
+              </Pressable>
+            ) : null}
+          </View>
           <Text style={styles.appointmentPrice}>
             {money(appointment.totalPrice)}
           </Text>
@@ -1044,6 +1082,21 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 13,
     fontWeight: "900",
+  },
+  customerNameRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  whatsappButton: {
+    width: 25,
+    height: 25,
+    borderRadius: 13,
+    backgroundColor: "#E8F8EE",
+    alignItems: "center",
+    justifyContent: "center",
   },
   appointmentPrice: { color: COLORS.text, fontSize: 11, fontWeight: "900" },
   serviceName: { color: COLORS.textSecondary, fontSize: 11, lineHeight: 16 },
