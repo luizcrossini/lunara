@@ -6,21 +6,52 @@ import type { AuthUser } from "@/features/auth/types/auth.types";
 const ACCESS_TOKEN_KEY = "lunara_access_token";
 const REFRESH_TOKEN_KEY = "lunara_refresh_token";
 const USER_KEY = "lunara_user";
+const COMPANY_ID_KEY = "lunara_company_id";
+const COMPANY_ROLE_KEY = "lunara_company_role";
+
+export type CompanyRole = "OWNER" | "ADMIN" | "PROFESSIONAL" | "CUSTOMER";
 
 export interface StoredAuthSession {
   user: AuthUser;
   accessToken: string;
   refreshToken: string;
+
+  /**
+   * Empresa ativa do usuário.
+   *
+   * Para OWNER/ADMIN/PROFESSIONAL,
+   * identifica a empresa na qual ele está trabalhando.
+   */
+  companyId?: string;
+
+  /**
+   * Papel do usuário dentro da empresa.
+   *
+   * Importante:
+   * o papel não pertence ao User global.
+   * Ele pertence ao vínculo do usuário com a empresa.
+   */
+  companyRole?: CompanyRole;
 }
 
 /*
- * WEB
+ * ============================================================
+ * STORAGE
+ * ============================================================
  *
- * No navegador utilizamos localStorage.
+ * WEB
+ * ----
+ * localStorage
  *
  * MOBILE
+ * ------
+ * expo-secure-store
  *
- * Android e iOS utilizam expo-secure-store.
+ * Dessa forma o mesmo serviço funciona em:
+ *
+ * - Web
+ * - Android
+ * - iOS
  */
 
 async function setItem(key: string, value: string): Promise<void> {
@@ -49,26 +80,81 @@ async function removeItem(key: string): Promise<void> {
   await SecureStore.deleteItemAsync(key);
 }
 
+/*
+ * ============================================================
+ * AUTH STORAGE
+ * ============================================================
+ */
+
 export const authStorage = {
+  /*
+   * ----------------------------------------------------------
+   * SALVAR SESSÃO
+   * ----------------------------------------------------------
+   */
+
   async saveSession(session: StoredAuthSession): Promise<void> {
-    await Promise.all([
+    const operations: Promise<void>[] = [
       setItem(ACCESS_TOKEN_KEY, session.accessToken),
+
       setItem(REFRESH_TOKEN_KEY, session.refreshToken),
+
       setItem(USER_KEY, JSON.stringify(session.user)),
-    ]);
+    ];
+
+    /*
+     * COMPANY ID
+     *
+     * Só salva se existir.
+     *
+     * Isso permite que um cliente comum tenha sessão
+     * sem necessariamente possuir uma empresa.
+     */
+
+    if (session.companyId) {
+      operations.push(setItem(COMPANY_ID_KEY, session.companyId));
+    } else {
+      operations.push(removeItem(COMPANY_ID_KEY));
+    }
+
+    /*
+     * COMPANY ROLE
+     *
+     * Persistimos o papel porque ele será necessário
+     * para reconstruir a rota depois de um reload.
+     */
+
+    if (session.companyRole) {
+      operations.push(setItem(COMPANY_ROLE_KEY, session.companyRole));
+    } else {
+      operations.push(removeItem(COMPANY_ROLE_KEY));
+    }
+
+    await Promise.all(operations);
   },
+
+  /*
+   * ----------------------------------------------------------
+   * RECUPERAR SESSÃO
+   * ----------------------------------------------------------
+   */
 
   async getSession(): Promise<StoredAuthSession | null> {
     try {
-      const [accessToken, refreshToken, userJson] = await Promise.all([
-        getItem(ACCESS_TOKEN_KEY),
-        getItem(REFRESH_TOKEN_KEY),
-        getItem(USER_KEY),
-      ]);
+      const [accessToken, refreshToken, userJson, companyId, companyRole] =
+        await Promise.all([
+          getItem(ACCESS_TOKEN_KEY),
+          getItem(REFRESH_TOKEN_KEY),
+          getItem(USER_KEY),
+          getItem(COMPANY_ID_KEY),
+          getItem(COMPANY_ROLE_KEY),
+        ]);
 
       /*
-       * Se qualquer informação essencial
-       * estiver ausente, não existe sessão válida.
+       * TOKEN + USER são obrigatórios.
+       *
+       * companyId e companyRole NÃO são obrigatórios
+       * porque um usuário pode ser apenas CUSTOMER.
        */
 
       if (!accessToken || !refreshToken || !userJson) {
@@ -77,17 +163,39 @@ export const authStorage = {
 
       const user = JSON.parse(userJson) as AuthUser;
 
+      /*
+       * Normaliza o papel para evitar problemas
+       * caso a API eventualmente retorne lowercase.
+       */
+
+      const normalizedCompanyRole = companyRole
+        ? companyRole.toUpperCase()
+        : undefined;
+
+      let parsedCompanyRole: CompanyRole | undefined;
+
+      if (
+        normalizedCompanyRole === "OWNER" ||
+        normalizedCompanyRole === "ADMIN" ||
+        normalizedCompanyRole === "PROFESSIONAL" ||
+        normalizedCompanyRole === "CUSTOMER"
+      ) {
+        parsedCompanyRole = normalizedCompanyRole;
+      }
+
       return {
         user,
         accessToken,
         refreshToken,
+        companyId: companyId ?? undefined,
+        companyRole: parsedCompanyRole,
       };
     } catch (error) {
       console.error("AUTH STORAGE GET SESSION ERROR:", error);
 
       /*
-       * Caso os dados estejam corrompidos,
-       * removemos a sessão.
+       * Se o conteúdo estiver corrompido,
+       * limpa toda a sessão.
        */
 
       try {
@@ -100,19 +208,76 @@ export const authStorage = {
     }
   },
 
+  /*
+   * ----------------------------------------------------------
+   * ACCESS TOKEN
+   * ----------------------------------------------------------
+   */
+
   async getAccessToken(): Promise<string | null> {
     return getItem(ACCESS_TOKEN_KEY);
   },
 
+  /*
+   * ----------------------------------------------------------
+   * REFRESH TOKEN
+   * ----------------------------------------------------------
+   */
+
   async getRefreshToken(): Promise<string | null> {
     return getItem(REFRESH_TOKEN_KEY);
   },
+
+  /*
+   * ----------------------------------------------------------
+   * COMPANY ID
+   * ----------------------------------------------------------
+   */
+
+  async getCompanyId(): Promise<string | null> {
+    return getItem(COMPANY_ID_KEY);
+  },
+
+  /*
+   * ----------------------------------------------------------
+   * COMPANY ROLE
+   * ----------------------------------------------------------
+   */
+
+  async getCompanyRole(): Promise<CompanyRole | null> {
+    const role = await getItem(COMPANY_ROLE_KEY);
+
+    if (!role) {
+      return null;
+    }
+
+    const normalizedRole = role.toUpperCase();
+
+    if (
+      normalizedRole === "OWNER" ||
+      normalizedRole === "ADMIN" ||
+      normalizedRole === "PROFESSIONAL" ||
+      normalizedRole === "CUSTOMER"
+    ) {
+      return normalizedRole as CompanyRole;
+    }
+
+    return null;
+  },
+
+  /*
+   * ----------------------------------------------------------
+   * LIMPAR SESSÃO
+   * ----------------------------------------------------------
+   */
 
   async clearSession(): Promise<void> {
     await Promise.all([
       removeItem(ACCESS_TOKEN_KEY),
       removeItem(REFRESH_TOKEN_KEY),
       removeItem(USER_KEY),
+      removeItem(COMPANY_ID_KEY),
+      removeItem(COMPANY_ROLE_KEY),
     ]);
   },
 };

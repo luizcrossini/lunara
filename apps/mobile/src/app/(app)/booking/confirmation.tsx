@@ -12,6 +12,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 
 import { useCreateAppointmentOrderMutation } from "@/features/appointment/api/appointmentOrderApi";
+import { useGetPublicProfessionalsQuery } from "@/features/professional/api/professionalApi";
 
 export default function BookingConfirmationScreen() {
   const {
@@ -94,6 +95,13 @@ export default function BookingConfirmationScreen() {
         .filter(Boolean)
     : [];
 
+  const parsedServiceIds = serviceIds
+    ? String(serviceIds)
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+    : [];
+
   /*
   ========================================
   PROFESSIONAL SERVICES IDS
@@ -106,6 +114,77 @@ export default function BookingConfirmationScreen() {
         .map((id) => id.trim())
         .filter(Boolean)
     : [];
+
+  /*
+  ========================================
+  PREÇOS DOS SERVIÇOS
+  ========================================
+
+  Busca novamente os dados do profissional para
+  obter o preço de cada ProfessionalService.
+
+  Não enviamos o preço pelo app e não confiamos
+  em valor calculado no frontend para criar o
+  agendamento. O backend continua sendo a fonte
+  oficial do preço no momento da confirmação.
+  */
+
+  const firstServiceId = parsedServiceIds[0];
+
+  const { data: professionals = [], isLoading: pricesLoading } =
+    useGetPublicProfessionalsQuery(
+      {
+        companyId: String(companyId ?? ""),
+        branchId: String(branchId ?? ""),
+        serviceId: firstServiceId,
+      },
+      {
+        skip: !companyId || !branchId || !professionalId || !firstServiceId,
+      },
+    );
+
+  const selectedProfessional = (professionals as any[]).find(
+    (professionalBranch) =>
+      professionalBranch?.professional?.id === String(professionalId),
+  )?.professional as any;
+
+  const professionalServices = selectedProfessional?.professionalServices ?? [];
+
+  const serviceItems = services.map((service, index) => {
+    const serviceId = parsedServiceIds[index];
+
+    const professionalService = professionalServices.find(
+      (item) => item.serviceId === serviceId,
+    );
+
+    return {
+      name: service,
+      price: professionalService?.price,
+    };
+  });
+
+  const totalPrice = serviceItems.reduce((total, service) => {
+    const price = Number(service.price);
+
+    return total + (Number.isFinite(price) ? price : 0);
+  }, 0);
+
+  const hasAllPrices =
+    serviceItems.length > 0 &&
+    serviceItems.every((service) => Number.isFinite(Number(service.price)));
+
+  function formatPrice(value?: string | number) {
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+      return pricesLoading ? "Carregando..." : "Valor indisponível";
+    }
+
+    return numericValue.toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    });
+  }
 
   /*
   ========================================
@@ -305,7 +384,30 @@ export default function BookingConfirmationScreen() {
         })),
       };
 
-      const appointment = await createAppointmentOrder(payload).unwrap();
+     const appointment = await createAppointmentOrder(payload).unwrap();
+
+/*
+============================================================
+VALOR TOTAL DO AGENDAMENTO
+============================================================
+
+Tentamos primeiro pegar o valor retornado diretamente
+pelo backend.
+
+Caso a API esteja encapsulando a resposta em "data",
+pegamos appointment.data.totalPrice.
+
+Como último fallback, usamos o totalPrice calculado
+na própria tela de confirmação.
+*/
+
+const appointmentResponse = appointment as any;
+
+const confirmedTotalPrice =
+  appointmentResponse?.totalPrice ??
+  appointmentResponse?.data?.totalPrice ??
+  totalPrice;
+
 
       router.replace({
         pathname: "/booking/success",
@@ -323,6 +425,7 @@ export default function BookingConfirmationScreen() {
           date: String(date),
           startTime: String(startTime),
           endTime: String(endTime),
+          totalPrice: String(confirmedTotalPrice ?? ""),
         },
       });
     } catch (error: any) {
@@ -390,11 +493,17 @@ export default function BookingConfirmationScreen() {
           </Text>
 
           {services.length > 0 ? (
-            services.map((service, index) => (
-              <View key={`${service}-${index}`} style={styles.serviceRow}>
-                <Text style={styles.serviceBullet}>•</Text>
+            serviceItems.map((service, index) => (
+              <View key={`${service.name}-${index}`} style={styles.serviceRow}>
+                <View style={styles.serviceInfo}>
+                  <Text style={styles.serviceBullet}>•</Text>
 
-                <Text style={styles.serviceName}>{service}</Text>
+                  <Text style={styles.serviceName}>{service.name}</Text>
+                </View>
+
+                <Text style={styles.servicePrice}>
+                  {formatPrice(service.price)}
+                </Text>
               </View>
             ))
           ) : (
@@ -472,6 +581,20 @@ export default function BookingConfirmationScreen() {
 
             <Text style={styles.summaryValue}>
               {formatTime(startTime)} - {formatTime(endTime)}
+            </Text>
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Valor total a ser pago</Text>
+
+            <Text style={styles.totalValue}>
+              {hasAllPrices
+                ? formatPrice(totalPrice)
+                : pricesLoading
+                  ? "Carregando..."
+                  : "Valor indisponível"}
             </Text>
           </View>
         </View>
@@ -594,7 +717,15 @@ const styles = StyleSheet.create({
   serviceRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 5,
+    justifyContent: "space-between",
+    marginTop: 8,
+    gap: 12,
+  },
+
+  serviceInfo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
   },
 
   serviceBullet: {
@@ -604,7 +735,14 @@ const styles = StyleSheet.create({
   },
 
   serviceName: {
+    flex: 1,
     fontSize: 16,
+    color: "#0F172A",
+  },
+
+  servicePrice: {
+    fontSize: 15,
+    fontWeight: "700",
     color: "#0F172A",
   },
 
@@ -655,6 +793,27 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#0F172A",
     maxWidth: "60%",
+    textAlign: "right",
+  },
+
+  totalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 16,
+  },
+
+  totalLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+
+  totalValue: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#7C3AED",
     textAlign: "right",
   },
 

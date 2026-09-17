@@ -6,7 +6,11 @@ import {
   useState,
 } from "react";
 
-import { authStorage } from "./auth-storage.service";
+import {
+  authStorage,
+  CompanyRole,
+  StoredAuthSession,
+} from "./auth-storage.service";
 
 type AuthUser = {
   id: string;
@@ -17,11 +21,17 @@ type AuthUser = {
 type AuthContextData = {
   user: AuthUser | null;
 
+  companyId: string | null;
+
+  companyRole: CompanyRole | null;
+
   isAuthenticated: boolean;
+
+  isOwner: boolean;
 
   isLoading: boolean;
 
-  signIn: (user: AuthUser) => void;
+  signIn: (session: StoredAuthSession) => void;
 
   signOut: () => Promise<void>;
 };
@@ -35,18 +45,35 @@ type AuthProviderProps = {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(null);
 
+  const [companyId, setCompanyId] = useState<string | null>(null);
+
+  const [companyRole, setCompanyRole] = useState<CompanyRole | null>(null);
+
   const [isLoading, setIsLoading] = useState(true);
 
+  /**
+   * RESTAURA A SESSÃO SALVA
+   */
   useEffect(() => {
     async function restoreSession() {
       try {
         const session = await authStorage.getSession();
 
-        if (session?.user) {
-          setUser(session.user);
+        if (!session) {
+          return;
         }
+
+        setUser(session.user);
+
+        setCompanyId(session.companyId ?? null);
+
+        setCompanyRole(session.companyRole ?? null);
       } catch (error) {
         console.error("Erro ao restaurar sessão:", error);
+
+        setUser(null);
+        setCompanyId(null);
+        setCompanyRole(null);
       } finally {
         setIsLoading(false);
       }
@@ -55,22 +82,57 @@ export function AuthProvider({ children }: AuthProviderProps) {
     restoreSession();
   }, []);
 
-  function signIn(userData: AuthUser) {
-    setUser(userData);
+  /**
+   * LOGIN
+   *
+   * O login já deve ter salvo a sessão no authStorage
+   * antes de chamar o signIn.
+   */
+  function signIn(session: StoredAuthSession) {
+    setUser(session.user);
+
+    setCompanyId(session.companyId ?? null);
+
+    setCompanyRole(session.companyRole ?? null);
   }
 
+  /**
+   * LOGOUT
+   */
   async function signOut() {
-    await authStorage.clearSession();
+    try {
+      await authStorage.clearSession();
+    } finally {
+      setUser(null);
 
-    setUser(null);
+      setCompanyId(null);
+
+      setCompanyRole(null);
+    }
   }
+
+  /**
+   * OWNER
+   */
+  const isOwner = companyRole === "OWNER";
+
+  /**
+   * AUTENTICADO
+   */
+  const isAuthenticated = !!user;
 
   return (
     <AuthContext.Provider
       value={{
         user,
 
-        isAuthenticated: !!user,
+        companyId,
+
+        companyRole,
+
+        isAuthenticated,
+
+        isOwner,
 
         isLoading,
 

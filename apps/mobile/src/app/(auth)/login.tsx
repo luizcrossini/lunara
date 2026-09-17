@@ -17,7 +17,7 @@ import { useRouter } from "expo-router";
 
 import { useLoginMutation } from "@/features/auth/api/authApi";
 import { getDeviceLoginData } from "@/core/device/device.service";
-import { authStorage } from "@/core/auth/auth-storage.service";
+import { authStorage, CompanyRole } from "@/core/auth/auth-storage.service";
 import { useAuth } from "@/core/auth/auth-context";
 
 type FeedbackType = "success" | "error" | null;
@@ -129,9 +129,14 @@ export default function LoginScreen() {
        * Se existir um vínculo ativo com role OWNER,
        * o usuário deve entrar no painel do proprietário.
        */
-      const isOwner = (companyUsers ?? []).some(
-        (companyUser) => companyUser.role.toUpperCase() === "OWNER",
+      const ownerCompanyUser = (companyUsers ?? []).find(
+        (companyUser) => companyUser.role?.toUpperCase() === "OWNER",
       );
+
+      const companyId = ownerCompanyUser?.companyId;
+
+      const companyRole = ownerCompanyUser ? "OWNER" : undefined;
+      const isOwner = !!ownerCompanyUser;
 
       /*
        * SALVA A SESSÃO LOCALMENTE
@@ -142,14 +147,24 @@ export default function LoginScreen() {
        * Web:
        * localStorage
        */
+      if (isOwner && !companyId) {
+        throw new Error("Usuário proprietário não possui empresa associada.");
+      }
 
       await authStorage.saveSession({
         user,
         accessToken,
         refreshToken,
+        companyId,
+        companyRole,
       });
-
-      signIn(user);
+      signIn({
+        user,
+        accessToken,
+        refreshToken,
+        companyId: ownerCompanyUser?.companyId,
+        companyRole: ownerCompanyUser?.role?.toUpperCase() as CompanyRole,
+      });
 
       /*
        * PRIMEIRO NOME DO USUÁRIO
@@ -174,14 +189,7 @@ export default function LoginScreen() {
        * que o usuário veja a confirmação.
        */
 
-      setTimeout(() => {
-        if (isOwner) {
-          router.replace("/dashboard");
-          return;
-        }
-
-        router.replace("/");
-      }, 1500);
+     
     } catch (error: any) {
       console.error("LOGIN ERROR:", error);
 

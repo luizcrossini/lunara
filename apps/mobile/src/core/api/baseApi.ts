@@ -20,6 +20,7 @@ const baseQueryWithAuth: BaseQueryFn<
   const session = await authStorage.getSession();
 
   const accessToken = session?.accessToken;
+  const companyId = session?.companyId;
 
   const requestArgs: FetchArgs =
     typeof args === "string"
@@ -30,8 +31,23 @@ const baseQueryWithAuth: BaseQueryFn<
 
   const headers = new Headers(requestArgs.headers);
 
+  /*
+   * AUTENTICAÇÃO
+   */
+
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  /*
+   * CONTEXTO DA EMPRESA
+   *
+   * O backend utiliza o x-company-id para determinar
+   * em qual tenant a requisição está sendo executada.
+   */
+
+  if (companyId) {
+    headers.set("x-company-id", companyId);
   }
 
   return rawBaseQuery(
@@ -58,7 +74,7 @@ export const baseApi = createApi({
     "Appointment",
     "Customer",
     "Profile",
-    "User"
+    "User",
   ],
 
   endpoints: () => ({}),

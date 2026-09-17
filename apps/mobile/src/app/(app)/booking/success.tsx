@@ -11,6 +11,7 @@ export default function BookingSuccessScreen() {
     date,
     startTime,
     endTime,
+    totalPrice,
   } = useLocalSearchParams<{
     companyName?: string;
     branchName?: string;
@@ -19,6 +20,7 @@ export default function BookingSuccessScreen() {
     date?: string;
     startTime?: string;
     endTime?: string;
+    totalPrice?: string;
   }>();
 
   // ============================================================
@@ -68,6 +70,29 @@ export default function BookingSuccessScreen() {
 
     // Caso já venha como HH:mm
     return value.substring(0, 5);
+  }
+
+  // ============================================================
+  // FORMATAR VALOR
+  // ============================================================
+
+  function formatCurrency(value?: string) {
+    if (!value) {
+      return "Valor indisponível";
+    }
+
+    const normalizedValue = String(value).replace(",", ".");
+
+    const numericValue = Number(normalizedValue);
+
+    if (!Number.isFinite(numericValue)) {
+      return "Valor indisponível";
+    }
+
+    return numericValue.toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    });
   }
 
   // ============================================================
@@ -147,6 +172,16 @@ export default function BookingSuccessScreen() {
               <Text style={styles.value}>{professionalName}</Text>
             </View>
           ) : null}
+
+          {/* ==================================================== */}
+          {/* VALOR TOTAL */}
+          {/* ==================================================== */}
+
+          <View style={styles.totalItem}>
+            <Text style={styles.totalLabel}>Valor total</Text>
+
+            <Text style={styles.totalValue}>{formatCurrency(totalPrice)}</Text>
+          </View>
         </View>
 
         {/* ====================================================== */}
@@ -315,6 +350,48 @@ const styles = StyleSheet.create({
     color: "#111827",
 
     lineHeight: 21,
+  },
+
+  // ==========================================================
+  // VALOR TOTAL
+  // ==========================================================
+
+  totalItem: {
+    marginTop: 4,
+
+    paddingTop: 16,
+
+    borderTopWidth: 1,
+
+    borderTopColor: "#E5E7EB",
+
+    flexDirection: "row",
+
+    alignItems: "center",
+
+    justifyContent: "space-between",
+
+    gap: 16,
+  },
+
+  totalLabel: {
+    flex: 1,
+
+    fontSize: 15,
+
+    fontWeight: "700",
+
+    color: "#111827",
+  },
+
+  totalValue: {
+    fontSize: 20,
+
+    fontWeight: "800",
+
+    color: "#B55A91",
+
+    textAlign: "right",
   },
 
   // ==========================================================
