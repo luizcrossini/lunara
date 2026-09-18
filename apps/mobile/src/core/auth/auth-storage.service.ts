@@ -8,6 +8,7 @@ const REFRESH_TOKEN_KEY = "lunara_refresh_token";
 const USER_KEY = "lunara_user";
 const COMPANY_ID_KEY = "lunara_company_id";
 const COMPANY_ROLE_KEY = "lunara_company_role";
+const BRANCH_ID_KEY = "lunara_branch_id";
 
 export type CompanyRole = "OWNER" | "ADMIN" | "PROFESSIONAL" | "CUSTOMER";
 
@@ -18,18 +19,16 @@ export interface StoredAuthSession {
 
   /**
    * Empresa ativa do usuário.
-   *
-   * Para OWNER/ADMIN/PROFESSIONAL,
-   * identifica a empresa na qual ele está trabalhando.
    */
   companyId?: string;
 
   /**
+   * Filial ativa do usuário.
+   */
+  branchId?: string;
+
+  /**
    * Papel do usuário dentro da empresa.
-   *
-   * Importante:
-   * o papel não pertence ao User global.
-   * Ele pertence ao vínculo do usuário com a empresa.
    */
   companyRole?: CompanyRole;
 }
@@ -46,22 +45,8 @@ export interface StoredAuthSession {
  * MOBILE
  * ------
  * expo-secure-store
- *
- * Dessa forma o mesmo serviço funciona em:
- *
- * - Web
- * - Android
- * - iOS
  */
-const BRANCH_ID_KEY = "lunara_branch_id";
 
-async function saveBranchId(branchId: string) {
-  await SecureStore.setItemAsync(BRANCH_ID_KEY, branchId);
-}
-
-async function getBranchId() {
-  return SecureStore.getItemAsync(BRANCH_ID_KEY);
-}
 async function setItem(key: string, value: string): Promise<void> {
   if (Platform.OS === "web") {
     localStorage.setItem(key, value);
@@ -104,20 +89,9 @@ export const authStorage = {
   async saveSession(session: StoredAuthSession): Promise<void> {
     const operations: Promise<void>[] = [
       setItem(ACCESS_TOKEN_KEY, session.accessToken),
-
       setItem(REFRESH_TOKEN_KEY, session.refreshToken),
-
       setItem(USER_KEY, JSON.stringify(session.user)),
     ];
-
-    /*
-     * COMPANY ID
-     *
-     * Só salva se existir.
-     *
-     * Isso permite que um cliente comum tenha sessão
-     * sem necessariamente possuir uma empresa.
-     */
 
     if (session.companyId) {
       operations.push(setItem(COMPANY_ID_KEY, session.companyId));
@@ -125,12 +99,11 @@ export const authStorage = {
       operations.push(removeItem(COMPANY_ID_KEY));
     }
 
-    /*
-     * COMPANY ROLE
-     *
-     * Persistimos o papel porque ele será necessário
-     * para reconstruir a rota depois de um reload.
-     */
+    if (session.branchId) {
+      operations.push(setItem(BRANCH_ID_KEY, session.branchId));
+    } else {
+      operations.push(removeItem(BRANCH_ID_KEY));
+    }
 
     if (session.companyRole) {
       operations.push(setItem(COMPANY_ROLE_KEY, session.companyRole));
@@ -149,32 +122,27 @@ export const authStorage = {
 
   async getSession(): Promise<StoredAuthSession | null> {
     try {
-      const [accessToken, refreshToken, userJson, companyId, companyRole] =
-        await Promise.all([
-          getItem(ACCESS_TOKEN_KEY),
-          getItem(REFRESH_TOKEN_KEY),
-          getItem(USER_KEY),
-          getItem(COMPANY_ID_KEY),
-          getItem(COMPANY_ROLE_KEY),
-        ]);
-
-      /*
-       * TOKEN + USER são obrigatórios.
-       *
-       * companyId e companyRole NÃO são obrigatórios
-       * porque um usuário pode ser apenas CUSTOMER.
-       */
+      const [
+        accessToken,
+        refreshToken,
+        userJson,
+        companyId,
+        branchId,
+        companyRole,
+      ] = await Promise.all([
+        getItem(ACCESS_TOKEN_KEY),
+        getItem(REFRESH_TOKEN_KEY),
+        getItem(USER_KEY),
+        getItem(COMPANY_ID_KEY),
+        getItem(BRANCH_ID_KEY),
+        getItem(COMPANY_ROLE_KEY),
+      ]);
 
       if (!accessToken || !refreshToken || !userJson) {
         return null;
       }
 
       const user = JSON.parse(userJson) as AuthUser;
-
-      /*
-       * Normaliza o papel para evitar problemas
-       * caso a API eventualmente retorne lowercase.
-       */
 
       const normalizedCompanyRole = companyRole
         ? companyRole.toUpperCase()
@@ -196,15 +164,11 @@ export const authStorage = {
         accessToken,
         refreshToken,
         companyId: companyId ?? undefined,
+        branchId: branchId ?? undefined,
         companyRole: parsedCompanyRole,
       };
     } catch (error) {
       console.error("AUTH STORAGE GET SESSION ERROR:", error);
-
-      /*
-       * Se o conteúdo estiver corrompido,
-       * limpa toda a sessão.
-       */
 
       try {
         await this.clearSession();
@@ -248,6 +212,16 @@ export const authStorage = {
 
   /*
    * ----------------------------------------------------------
+   * BRANCH ID
+   * ----------------------------------------------------------
+   */
+
+  async getBranchId(): Promise<string | null> {
+    return getItem(BRANCH_ID_KEY);
+  },
+
+  /*
+   * ----------------------------------------------------------
    * COMPANY ROLE
    * ----------------------------------------------------------
    */
@@ -285,6 +259,7 @@ export const authStorage = {
       removeItem(REFRESH_TOKEN_KEY),
       removeItem(USER_KEY),
       removeItem(COMPANY_ID_KEY),
+      removeItem(BRANCH_ID_KEY),
       removeItem(COMPANY_ROLE_KEY),
     ]);
   },

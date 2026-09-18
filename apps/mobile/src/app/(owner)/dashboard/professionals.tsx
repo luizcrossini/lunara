@@ -88,8 +88,23 @@ type ProfessionalForm = {
   active: boolean;
 };
 
-const unwrap = (response: any) =>
-  response?.data?.items ?? response?.items ?? response?.data ?? response ?? [];
+const unwrap = (response: any): any[] => {
+  if (Array.isArray(response)) return response;
+  if (!response || typeof response !== "object") return [];
+
+  const candidates = [
+    response.items,
+    response.data?.items,
+    response.data?.data,
+    response.data?.services,
+    response.services,
+    response.results,
+    response.data,
+  ];
+
+  const list = candidates.find((candidate) => Array.isArray(candidate));
+  return list ?? [];
+};
 
 const professionalsApi = baseApi.injectEndpoints({
   overrideExisting: true,
@@ -1242,6 +1257,13 @@ export default function OwnerProfessionals() {
                   defina o preço específico que será cobrado por este
                   profissional. O preço é obrigatório para serviços ativados.
                 </Text>
+                {services.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateText}>
+                      Nenhum serviço encontrado.
+                    </Text>
+                  </View>
+                ) : null}
                 {services.map((service) => {
                   const item = serviceDraft[service.id] ?? {
                     linked: false,
@@ -1667,6 +1689,20 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 15,
     marginBottom: 14,
+  },
+  emptyState: {
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  emptyStateText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
   },
   serviceInfo: { flex: 1, minWidth: 0 },
   serviceTitle: { color: COLORS.text, fontSize: 12, fontWeight: "900" },
