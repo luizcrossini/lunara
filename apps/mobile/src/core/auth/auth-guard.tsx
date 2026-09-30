@@ -10,56 +10,79 @@ type AuthGuardProps = {
 
 export function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter();
-
   const segments = useSegments();
 
   const { isAuthenticated, isLoading, companyRole } = useAuth();
 
   useEffect(() => {
+    // Aguarda a restauração da sessão.
     if (isLoading) {
       return;
     }
 
     const inAuthGroup = segments[0] === "(auth)";
 
-    /**
-     * USUÁRIO NÃO AUTENTICADO
+    const isDashboardRoute = segments.includes("dashboard");
+
+    const isOwnerOrAdmin = companyRole === "OWNER" || companyRole === "ADMIN";
+
+    /*
+     * 1. USUÁRIO NÃO AUTENTICADO
      *
-     * Se não estiver logado e não estiver na área de autenticação,
-     * manda para o login.
+     * Só pode permanecer nas rotas públicas
+     * de autenticação.
      */
-    if (!isAuthenticated && !inAuthGroup) {
-      router.replace("/login");
+    if (!isAuthenticated) {
+      if (!inAuthGroup) {
+        router.replace("/login");
+      }
+
       return;
     }
 
-    /**
-     * USUÁRIO AUTENTICADO DENTRO DA ÁREA DE LOGIN
+    /*
+     * 2. OWNER E ADMIN
      *
-     * Depois do login, decide para onde ir de acordo com o perfil.
+     * Devem acessar o painel administrativo.
+     * Isso também corrige o caso em que o usuário
+     * cai na tela inicial do cliente após o login.
      */
-    if (isAuthenticated && inAuthGroup) {
-      if (companyRole === "OWNER" || companyRole === "ADMIN") {
+    if (isOwnerOrAdmin) {
+      if (!isDashboardRoute) {
         router.replace("/dashboard");
-        return;
       }
 
-      if (companyRole === "PROFESSIONAL") {
-        router.replace("/");
-        return;
-      }
-
-      /**
-       * CUSTOMER ou usuário sem empresa
-       */
-      router.replace("/");
       return;
     }
-  }, [isAuthenticated, isLoading, companyRole, segments]);
 
-  /**
-   * Enquanto recupera o SecureStore/localStorage,
-   * não renderiza as rotas para evitar redirecionamento prematuro.
+    /*
+     * 3. PROFISSIONAL
+     *
+     * Não deve permanecer na tela de login
+     * depois de autenticado.
+     */
+    if (companyRole === "PROFESSIONAL") {
+      if (inAuthGroup) {
+        router.replace("/");
+      }
+
+      return;
+    }
+
+    /*
+     * 4. CLIENTE OU USUÁRIO SEM EMPRESA
+     *
+     * Redireciona para a área do cliente
+     * quando estiver na área de autenticação.
+     */
+    if (inAuthGroup) {
+      router.replace("/");
+    }
+  }, [isAuthenticated, isLoading, companyRole, segments, router]);
+
+  /*
+   * Evita renderizar as rotas antes de
+   * terminar a restauração da sessão.
    */
   if (isLoading) {
     return null;

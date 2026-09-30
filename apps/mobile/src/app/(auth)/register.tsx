@@ -13,96 +13,139 @@ import {
   View,
 } from "react-native";
 
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { useRegisterMutation } from "@/features/auth/api/authApi";
+import { baseApi } from "@/core/api/baseApi";
+import { authStorage } from "@/core/auth/auth-storage.service";
+import { useAuth } from "@/core/auth/auth-context";
+
+type AccountType = "customer" | "business";
+
+type RegisterRequest = {
+  type: AccountType;
+  name: string;
+  email: string;
+  password: string;
+  corporateName?: string;
+  tradeName?: string;
+  documentType?: "CPF" | "CNPJ";
+  document?: string;
+  companyEmail?: string;
+};
+
+type RegisterResponse = {
+  user: {
+    id: string;
+    name?: string;
+    email: string;
+    [key: string]: unknown;
+  };
+  accessToken: string;
+  refreshToken: string;
+};
 
 type RegisterError = {
   message: string;
+  field?: "name" | "email" | "password" | "confirmPassword" | "corporateName" | "tradeName" | "document" | "companyEmail";
+};
 
-  field?: "name" | "email" | "password" | "confirmPassword";
+const registerApi = baseApi.injectEndpoints({
+  overrideExisting: true,
+  endpoints: (builder) => ({
+    register: builder.mutation<RegisterResponse, RegisterRequest>({
+      query: (body) => ({
+        url: "/auth/register",
+        method: "POST",
+        body,
+      }),
+    }),
+  }),
+});
+
+const { useRegisterMutation } = registerApi;
+
+const COLORS = {
+  background: "#FCFAFD",
+  white: "#FFFFFF",
+  primary: "#B55A91",
+  primaryDark: "#93436F",
+  text: "#2E2430",
+  secondary: "#7B7280",
+  border: "#E8DDE7",
+  error: "#B42318",
+  errorBackground: "#FFF1F3",
 };
 
 export default function RegisterScreen() {
   const router = useRouter();
 
+  const params = useLocalSearchParams<{ type?: string }>();
+
+  const accountType: AccountType =
+    params.type === "business" ? "business" : "customer";
+
+  const { signIn } = useAuth();
+
+  const [register, { isLoading }] = useRegisterMutation();
+
   const [name, setName] = useState("");
-
   const [email, setEmail] = useState("");
-
   const [password, setPassword] = useState("");
-
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  // Dados adicionais exigidos somente para contas empresariais.
+  const [corporateName, setCorporateName] = useState("");
+  const [tradeName, setTradeName] = useState("");
+  const [documentType, setDocumentType] = useState<"CPF" | "CNPJ">("CNPJ");
+  const [document, setDocument] = useState("");
+  const [companyEmail, setCompanyEmail] = useState("");
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [registerError, setRegisterError] = useState<RegisterError | null>(
     null,
   );
 
-  const [showPassword, setShowPassword] = useState(false);
-
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  const [register, { isLoading }] = useRegisterMutation();
-
   function clearError(field?: RegisterError["field"]) {
-    if (!registerError) {
-      return;
-    }
-
-    if (!field || registerError.field === field) {
+    if (!field || registerError?.field === field) {
       setRegisterError(null);
     }
   }
 
   function getErrorMessage(error: any): RegisterError {
-    const backendMessage = error?.data?.message;
-
+    const message = error?.data?.message ?? error?.message;
     const status = error?.status;
 
-    if (Array.isArray(backendMessage) && backendMessage.length > 0) {
-      return {
-        message: backendMessage[0],
-      };
-    }
-
     if (status === 409) {
-      return {
-        message: "Este e-mail já possui uma conta cadastrada.",
-        field: "email",
-      };
+      const conflictMessage = Array.isArray(message)
+        ? String(message[0])
+        : typeof message === "string"
+          ? message
+          : "Este e-mail ou CNPJ já está cadastrado.";
+      return { message: conflictMessage };
     }
 
     if (status === 429) {
       return {
         message:
-          "Muitas tentativas foram realizadas. Aguarde alguns instantes antes de tentar novamente.",
+          "Muitas tentativas. Aguarde um pouco antes de tentar novamente.",
       };
     }
 
     if (status === "FETCH_ERROR") {
       return {
         message:
-          "Não foi possível conectar à Lunara. Verifique sua conexão com a internet.",
+          "Não foi possível conectar à Lunara. Verifique sua conexão e a URL da API.",
       };
     }
 
-    if (status === "TIMEOUT_ERROR") {
-      return {
-        message: "A conexão demorou mais do que o esperado. Tente novamente.",
-      };
+    if (Array.isArray(message) && message.length > 0) {
+      return { message: String(message[0]) };
     }
 
-    if (status >= 500) {
-      return {
-        message:
-          "Estamos enfrentando uma instabilidade. Tente novamente em alguns minutos.",
-      };
-    }
-
-    if (typeof backendMessage === "string") {
-      return {
-        message: backendMessage,
-      };
+    if (typeof message === "string") {
+      return { message };
     }
 
     return {
@@ -110,61 +153,88 @@ export default function RegisterScreen() {
     };
   }
 
-  async function handleRegister() {
-    setRegisterError(null);
-
+  function validateForm(): boolean {
     if (!name.trim()) {
       setRegisterError({
-        message: "Informe seu nome para criar sua conta.",
+        message: "Informe seu nome completo.",
         field: "name",
       });
-
-      return;
+      return false;
     }
 
     if (name.trim().length < 3) {
       setRegisterError({
-        message: "Seu nome deve ter pelo menos 3 caracteres.",
+        message: "O nome deve ter pelo menos 3 caracteres.",
         field: "name",
       });
-
-      return;
+      return false;
     }
 
-    if (!email.trim()) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
       setRegisterError({
-        message: "Informe seu endereço de e-mail.",
+        message: "Informe seu e-mail.",
         field: "email",
       });
-
-      return;
+      return false;
     }
 
-    if (!email.includes("@")) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       setRegisterError({
         message: "Digite um endereço de e-mail válido.",
         field: "email",
       });
-
-      return;
-    }
-
-    if (!password) {
-      setRegisterError({
-        message: "Crie uma senha para sua conta.",
-        field: "password",
-      });
-
-      return;
+      return false;
     }
 
     if (password.length < 8) {
       setRegisterError({
-        message: "Sua senha deve ter pelo menos 8 caracteres.",
+        message: "A senha deve ter pelo menos 8 caracteres.",
         field: "password",
       });
+      return false;
+    }
 
-      return;
+    if (isBusiness) {
+      if (corporateName.trim().length < 3) {
+        setRegisterError({
+          message: "Informe a razão social da empresa.",
+          field: "corporateName",
+        });
+        return false;
+      }
+
+      if (tradeName.trim().length < 2) {
+        setRegisterError({
+          message: "Informe o nome fantasia do negócio.",
+          field: "tradeName",
+        });
+        return false;
+      }
+
+      const normalizedDocument = document.replace(/\D/g, "");
+      const expectedLength = documentType === "CPF" ? 11 : 14;
+
+      if (normalizedDocument.length !== expectedLength) {
+        setRegisterError({
+          message:
+            documentType === "CPF"
+              ? "Informe um CPF com 11 números."
+              : "Informe um CNPJ com 14 números.",
+          field: "document",
+        });
+        return false;
+      }
+
+      const normalizedCompanyEmail = companyEmail.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedCompanyEmail)) {
+        setRegisterError({
+          message: "Informe um e-mail comercial válido.",
+          field: "companyEmail",
+        });
+        return false;
+      }
     }
 
     if (password !== confirmPassword) {
@@ -172,17 +242,64 @@ export default function RegisterScreen() {
         message: "As senhas informadas não são iguais.",
         field: "confirmPassword",
       });
+      return false;
+    }
 
+    return true;
+  }
+
+  async function handleRegister() {
+    setRegisterError(null);
+
+    if (!validateForm()) {
       return;
     }
 
     try {
-      await register({
+      const payload: RegisterRequest = {
+        type: accountType,
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
-      }).unwrap();
+        ...(isBusiness
+          ? {
+              corporateName: corporateName.trim(),
+              tradeName: tradeName.trim(),
+              documentType,
+              document: document.replace(/\D/g, ""),
+              companyEmail: companyEmail.trim().toLowerCase(),
+            }
+          : {}),
+      };
 
+      const rawResponse = await register(payload).unwrap();
+
+      // A API pode devolver a resposta dentro de "data".
+      const response: any =
+        (rawResponse as any)?.data?.data ??
+        (rawResponse as any)?.data ??
+        rawResponse;
+
+      const user = response?.user;
+      const accessToken = response?.accessToken;
+      const refreshToken = response?.refreshToken;
+
+      if (!user?.id || !accessToken || !refreshToken) {
+        throw new Error(
+          "A API não retornou os dados necessários para iniciar a sessão.",
+        );
+      }
+
+      await authStorage.saveSession({
+        user,
+        accessToken,
+        refreshToken,
+      });
+
+      signIn(user);
+
+      // O AuthGuard e o fluxo inicial da aplicação determinam
+      // a tela adequada para o usuário autenticado.
       router.replace("/");
     } catch (error: any) {
       console.error("REGISTER ERROR:", error);
@@ -191,13 +308,7 @@ export default function RegisterScreen() {
     }
   }
 
-  const nameHasError = registerError?.field === "name";
-
-  const emailHasError = registerError?.field === "email";
-
-  const passwordHasError = registerError?.field === "password";
-
-  const confirmPasswordHasError = registerError?.field === "confirmPassword";
+  const isBusiness = accountType === "business";
 
   return (
     <KeyboardAvoidingView
@@ -213,8 +324,6 @@ export default function RegisterScreen() {
           <View style={styles.topGlow} />
 
           <View style={styles.content}>
-            {/* LOGO */}
-
             <View style={styles.logoContainer}>
               <Image
                 source={require("../../../assets/images/logo.png")}
@@ -223,24 +332,24 @@ export default function RegisterScreen() {
               />
             </View>
 
-            {/* HEADER */}
-
             <View style={styles.header}>
+              <View style={styles.accountBadge}>
+                <Text style={styles.accountBadgeText}>
+                  {isBusiness ? "🏢  Conta de negócio" : "👤  Conta de cliente"}
+                </Text>
+              </View>
+
               <Text style={styles.title}>Crie sua conta</Text>
 
               <Text style={styles.subtitle}>
-                Comece a simplificar sua rotina com a Lunara
+                {isBusiness
+                  ? "Comece a organizar seu negócio com a Lunara."
+                  : "Encontre profissionais e agende seus atendimentos."}
               </Text>
             </View>
 
-            {/* ERROR */}
-
             {registerError && (
               <View style={styles.errorContainer}>
-                <View style={styles.errorIconContainer}>
-                  <Text style={styles.errorIcon}>!</Text>
-                </View>
-
                 <View style={styles.errorContent}>
                   <Text style={styles.errorTitle}>
                     Não foi possível continuar
@@ -257,11 +366,7 @@ export default function RegisterScreen() {
               </View>
             )}
 
-            {/* FORM */}
-
             <View style={styles.form}>
-              {/* NAME */}
-
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Nome completo</Text>
 
@@ -269,18 +374,149 @@ export default function RegisterScreen() {
                   value={name}
                   onChangeText={(value) => {
                     setName(value);
-
                     clearError("name");
                   }}
                   placeholder="Digite seu nome"
                   placeholderTextColor="#9CA3AF"
                   autoCapitalize="words"
+                  autoComplete="name"
+                  returnKeyType="next"
                   editable={!isLoading}
-                  style={[styles.input, nameHasError && styles.inputError]}
+                  style={[
+                    styles.input,
+                    registerError?.field === "name" && styles.inputError,
+                  ]}
                 />
               </View>
 
-              {/* EMAIL */}
+              {isBusiness && (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Razão social</Text>
+                    <TextInput
+                      value={corporateName}
+                      onChangeText={(value) => {
+                        setCorporateName(value);
+                        clearError("corporateName");
+                      }}
+                      placeholder="Razão social da empresa"
+                      placeholderTextColor="#9CA3AF"
+                      autoCapitalize="words"
+                      returnKeyType="next"
+                      editable={!isLoading}
+                      style={[
+                        styles.input,
+                        registerError?.field === "corporateName" && styles.inputError,
+                      ]}
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Nome fantasia</Text>
+                    <TextInput
+                      value={tradeName}
+                      onChangeText={(value) => {
+                        setTradeName(value);
+                        clearError("tradeName");
+                      }}
+                      placeholder="Nome do salão ou clínica"
+                      placeholderTextColor="#9CA3AF"
+                      autoCapitalize="words"
+                      returnKeyType="next"
+                      editable={!isLoading}
+                      style={[
+                        styles.input,
+                        registerError?.field === "tradeName" && styles.inputError,
+                      ]}
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Documento do negócio</Text>
+
+                    <View style={styles.documentTypeContainer}>
+                      {(["CPF", "CNPJ"] as const).map((type) => {
+                        const selected = documentType === type;
+
+                        return (
+                          <Pressable
+                            key={type}
+                            onPress={() => {
+                              setDocumentType(type);
+                              setDocument("");
+                              clearError("document");
+                            }}
+                            disabled={isLoading}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                            style={[
+                              styles.documentTypeButton,
+                              selected && styles.documentTypeButtonSelected,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.documentTypeButtonText,
+                                selected && styles.documentTypeButtonTextSelected,
+                              ]}
+                            >
+                              {type}
+                              {type === "CPF" ? " · Autônomo" : " · Empresa"}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+
+                    <TextInput
+                      value={document}
+                      onChangeText={(value) => {
+                        const allowed = value.replace(/\D/g, "");
+                        const maxDigits = documentType === "CPF" ? 11 : 14;
+                        setDocument(allowed.slice(0, maxDigits));
+                        clearError("document");
+                      }}
+                      placeholder={
+                        documentType === "CPF"
+                          ? "000.000.000-00"
+                          : "00.000.000/0000-00"
+                      }
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="numeric"
+                      autoCapitalize="none"
+                      returnKeyType="next"
+                      editable={!isLoading}
+                      maxLength={documentType === "CPF" ? 11 : 14}
+                      style={[
+                        styles.input,
+                        registerError?.field === "document" && styles.inputError,
+                      ]}
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>E-mail comercial</Text>
+                    <TextInput
+                      value={companyEmail}
+                      onChangeText={(value) => {
+                        setCompanyEmail(value);
+                        clearError("companyEmail");
+                      }}
+                      placeholder="contato@suaempresa.com.br"
+                      placeholderTextColor="#9CA3AF"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      returnKeyType="next"
+                      editable={!isLoading}
+                      style={[
+                        styles.input,
+                        registerError?.field === "companyEmail" && styles.inputError,
+                      ]}
+                    />
+                  </View>
+                </>
+              )}
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>E-mail</Text>
@@ -289,48 +525,51 @@ export default function RegisterScreen() {
                   value={email}
                   onChangeText={(value) => {
                     setEmail(value);
-
                     clearError("email");
                   }}
                   placeholder="Digite seu e-mail"
                   placeholderTextColor="#9CA3AF"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  autoComplete="email"
                   keyboardType="email-address"
+                  returnKeyType="next"
                   editable={!isLoading}
-                  style={[styles.input, emailHasError && styles.inputError]}
+                  style={[
+                    styles.input,
+                    registerError?.field === "email" && styles.inputError,
+                  ]}
                 />
               </View>
-
-              {/* PASSWORD */}
 
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Crie uma senha</Text>
 
                 <View
                   style={[
-                    styles.passwordInputContainer,
-                    passwordHasError && styles.inputError,
+                    styles.passwordContainer,
+                    registerError?.field === "password" && styles.inputError,
                   ]}
                 >
                   <TextInput
                     value={password}
                     onChangeText={(value) => {
                       setPassword(value);
-
                       clearError("password");
                     }}
                     placeholder="Mínimo de 8 caracteres"
                     placeholderTextColor="#9CA3AF"
                     secureTextEntry={!showPassword}
+                    autoComplete="new-password"
+                    returnKeyType="next"
                     editable={!isLoading}
                     style={styles.passwordInput}
                   />
 
                   <Pressable
-                    onPress={() => setShowPassword(!showPassword)}
-                    hitSlop={10}
+                    onPress={() => setShowPassword((value) => !value)}
                     disabled={isLoading}
+                    hitSlop={10}
                   >
                     <Text style={styles.showPassword}>
                       {showPassword ? "Ocultar" : "Mostrar"}
@@ -339,35 +578,36 @@ export default function RegisterScreen() {
                 </View>
               </View>
 
-              {/* CONFIRM PASSWORD */}
-
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Confirme sua senha</Text>
 
                 <View
                   style={[
-                    styles.passwordInputContainer,
-                    confirmPasswordHasError && styles.inputError,
+                    styles.passwordContainer,
+                    registerError?.field === "confirmPassword" &&
+                      styles.inputError,
                   ]}
                 >
                   <TextInput
                     value={confirmPassword}
                     onChangeText={(value) => {
                       setConfirmPassword(value);
-
                       clearError("confirmPassword");
                     }}
-                    placeholder="Digite sua senha novamente"
+                    placeholder="Digite a senha novamente"
                     placeholderTextColor="#9CA3AF"
                     secureTextEntry={!showConfirmPassword}
+                    autoComplete="new-password"
+                    returnKeyType="done"
                     editable={!isLoading}
+                    onSubmitEditing={handleRegister}
                     style={styles.passwordInput}
                   />
 
                   <Pressable
-                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                    hitSlop={10}
+                    onPress={() => setShowConfirmPassword((value) => !value)}
                     disabled={isLoading}
+                    hitSlop={10}
                   >
                     <Text style={styles.showPassword}>
                       {showConfirmPassword ? "Ocultar" : "Mostrar"}
@@ -375,8 +615,6 @@ export default function RegisterScreen() {
                   </Pressable>
                 </View>
               </View>
-
-              {/* REGISTER BUTTON */}
 
               <Pressable
                 onPress={handleRegister}
@@ -390,7 +628,6 @@ export default function RegisterScreen() {
                 {isLoading ? (
                   <View style={styles.loadingContainer}>
                     <ActivityIndicator color="#FFFFFF" size="small" />
-
                     <Text style={styles.buttonText}>Criando conta...</Text>
                   </View>
                 ) : (
@@ -399,21 +636,26 @@ export default function RegisterScreen() {
               </Pressable>
             </View>
 
-            {/* LOGIN */}
-
             <View style={styles.loginContainer}>
               <Text style={styles.loginText}>Já possui uma conta?</Text>
 
               <Pressable
                 onPress={() => router.replace("/")}
                 disabled={isLoading}
+                hitSlop={10}
               >
                 <Text style={styles.loginLink}>Entrar</Text>
               </Pressable>
             </View>
-          </View>
 
-          {/* FOOTER */}
+            <Pressable
+              onPress={() => router.back()}
+              disabled={isLoading}
+              style={styles.backButton}
+            >
+              <Text style={styles.backButtonText}>‹ Voltar</Text>
+            </Pressable>
+          </View>
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>
@@ -430,7 +672,7 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   keyboardContainer: {
     flex: 1,
-    backgroundColor: "#FCFAFD",
+    backgroundColor: COLORS.background,
   },
 
   scrollContent: {
@@ -440,7 +682,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     minHeight: "100%",
-    backgroundColor: "#FCFAFD",
+    backgroundColor: COLORS.background,
     overflow: "hidden",
   },
 
@@ -448,111 +690,78 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -180,
     alignSelf: "center",
-
     width: 500,
     height: 350,
-
     borderRadius: 250,
-
     backgroundColor: "#F8E6F0",
-
     opacity: 0.8,
   },
 
   content: {
     width: "100%",
     maxWidth: 440,
-
     alignSelf: "center",
-
     flex: 1,
-
     justifyContent: "center",
-
     paddingHorizontal: 24,
-
-    paddingTop: 40,
-
+    paddingTop: 32,
     paddingBottom: 24,
   },
 
   logoContainer: {
     alignItems: "center",
-
-    marginBottom: 20,
+    marginBottom: 12,
   },
 
   logo: {
-    width: 170,
-    height: 120,
+    width: 150,
+    height: 100,
   },
 
   header: {
     alignItems: "center",
-
     marginBottom: 24,
+  },
+
+  accountBadge: {
+    backgroundColor: "#F9EAF3",
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginBottom: 14,
+  },
+
+  accountBadgeText: {
+    color: COLORS.primaryDark,
+    fontSize: 13,
+    fontWeight: "700",
   },
 
   title: {
     fontSize: 26,
-
     fontWeight: "700",
-
-    color: "#2E2430",
-
+    color: COLORS.text,
     textAlign: "center",
-
-    marginBottom: 10,
+    marginBottom: 8,
   },
 
   subtitle: {
-    fontSize: 15,
-
-    lineHeight: 22,
-
-    color: "#7B7280",
-
+    fontSize: 14,
+    lineHeight: 21,
+    color: COLORS.secondary,
     textAlign: "center",
   },
 
   errorContainer: {
     flexDirection: "row",
-
     alignItems: "flex-start",
-
     gap: 12,
-
     padding: 14,
-
     marginBottom: 20,
-
     borderRadius: 16,
-
-    backgroundColor: "#FFF1F3",
-
+    backgroundColor: COLORS.errorBackground,
     borderWidth: 1,
-
     borderColor: "#FFD1D8",
-  },
-
-  errorIconContainer: {
-    width: 24,
-    height: 24,
-
-    borderRadius: 12,
-
-    alignItems: "center",
-    justifyContent: "center",
-
-    backgroundColor: "#E5484D",
-  },
-
-  errorIcon: {
-    color: "#FFFFFF",
-
-    fontSize: 16,
-
-    fontWeight: "800",
   },
 
   errorContent: {
@@ -561,28 +770,21 @@ const styles = StyleSheet.create({
 
   errorTitle: {
     fontSize: 14,
-
     fontWeight: "700",
-
-    color: "#B42318",
-
-    marginBottom: 3,
+    color: COLORS.error,
+    marginBottom: 4,
   },
 
   errorMessage: {
     fontSize: 13,
-
     lineHeight: 19,
-
     color: "#7A271A",
   },
 
   closeError: {
     fontSize: 24,
-
-    lineHeight: 20,
-
-    color: "#B42318",
+    lineHeight: 22,
+    color: COLORS.error,
   },
 
   form: {
@@ -595,129 +797,105 @@ const styles = StyleSheet.create({
 
   label: {
     fontSize: 14,
-
     fontWeight: "600",
-
     color: "#463B48",
   },
 
   input: {
     width: "100%",
-
     height: 56,
-
     paddingHorizontal: 18,
-
     borderRadius: 16,
-
-    backgroundColor: "#FFFFFF",
-
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-
-    borderColor: "#E8DDE7",
-
+    borderColor: COLORS.border,
     fontSize: 16,
-
-    color: "#2E2430",
-
-    ...(Platform.OS === "web"
-      ? {
-          outlineStyle: "none" as any,
-        }
-      : {}),
+    color: COLORS.text,
   },
 
   inputError: {
     borderColor: "#E5484D",
-
     borderWidth: 1.5,
-
     backgroundColor: "#FFF9FA",
   },
 
-  passwordInputContainer: {
-    width: "100%",
-
-    height: 56,
-
+  documentTypeContainer: {
     flexDirection: "row",
+    gap: 10,
+  },
 
+  documentTypeButton: {
+    flex: 1,
+    minHeight: 46,
     alignItems: "center",
-
-    paddingLeft: 18,
-
-    paddingRight: 16,
-
-    borderRadius: 16,
-
-    backgroundColor: "#FFFFFF",
-
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    borderRadius: 14,
     borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
 
-    borderColor: "#E8DDE7",
+  documentTypeButtonSelected: {
+    borderColor: COLORS.primary,
+    backgroundColor: "#F9EAF3",
+  },
+
+  documentTypeButtonText: {
+    color: COLORS.secondary,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  documentTypeButtonTextSelected: {
+    color: COLORS.primaryDark,
+  },
+
+  passwordContainer: {
+    width: "100%",
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: 18,
+    paddingRight: 16,
+    borderRadius: 16,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
 
   passwordInput: {
     flex: 1,
-
-    height: "100%",
-
+    minHeight: 54,
     fontSize: 16,
-
-    color: "#2E2430",
-
-    ...(Platform.OS === "web"
-      ? {
-          outlineStyle: "none" as any,
-        }
-      : {}),
+    color: COLORS.text,
   },
 
   showPassword: {
     fontSize: 13,
-
     fontWeight: "600",
-
     color: "#9B5C86",
+    paddingLeft: 8,
   },
 
   button: {
     width: "100%",
-
-    height: 56,
-
+    minHeight: 56,
     marginTop: 8,
-
     borderRadius: 16,
-
     alignItems: "center",
-
     justifyContent: "center",
-
-    backgroundColor: "#B55A91",
-
-    shadowColor: "#B55A91",
-
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-
+    backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.2,
-
     shadowRadius: 12,
-
     elevation: 5,
   },
 
   buttonPressed: {
     opacity: 0.88,
-
-    transform: [
-      {
-        scale: 0.98,
-      },
-    ],
+    transform: [{ scale: 0.98 }],
   },
 
   buttonDisabled: {
@@ -726,65 +904,61 @@ const styles = StyleSheet.create({
 
   loadingContainer: {
     flexDirection: "row",
-
     alignItems: "center",
-
     gap: 10,
   },
 
   buttonText: {
-    color: "#FFFFFF",
-
+    color: COLORS.white,
     fontSize: 16,
-
     fontWeight: "700",
   },
 
   loginContainer: {
     flexDirection: "row",
-
     justifyContent: "center",
-
     alignItems: "center",
-
     gap: 5,
-
-    marginTop: 28,
+    marginTop: 24,
   },
 
   loginText: {
     fontSize: 14,
-
-    color: "#7B7280",
+    color: COLORS.secondary,
   },
 
   loginLink: {
     fontSize: 14,
-
     fontWeight: "700",
-
     color: "#A74D82",
+  },
+
+  backButton: {
+    alignSelf: "center",
+    marginTop: 18,
+    padding: 8,
+  },
+
+  backButtonText: {
+    color: COLORS.secondary,
+    fontSize: 14,
+    fontWeight: "600",
   },
 
   footer: {
     alignItems: "center",
-
     paddingHorizontal: 20,
-
-    paddingBottom: 24,
+    paddingBottom: 20,
   },
 
   footerText: {
     fontSize: 12,
-
-    color: "#7B7280",
-
+    color: COLORS.secondary,
     textAlign: "center",
   },
 
   footerHighlight: {
     fontWeight: "700",
-
     color: "#A74D82",
   },
 });

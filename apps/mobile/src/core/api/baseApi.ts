@@ -55,11 +55,7 @@ const baseQueryWithAuth: BaseQueryFn<
   if (branchId) {
     headers.set("x-branch-id", branchId);
   }
-  console.log("CONTEXTO DA REQUISIÇÃO:", {
-    accessToken: !!accessToken,
-    companyId,
-    branchId,
-  });
+  
   return rawBaseQuery(
     {
       ...requestArgs,

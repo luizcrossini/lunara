@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { baseApi } from "@/core/api/baseApi";
+import { authStorage } from "@/core/auth/auth-storage.service";
 
 const COLORS = {
   primary: "#B5548F",
@@ -53,6 +54,8 @@ type ProfessionalService = {
   professional?: { id?: string };
 };
 
+type Branch = { id: string; name: string; active?: boolean };
+
 type Professional = {
   id: string;
   active?: boolean;
@@ -70,7 +73,7 @@ type Professional = {
     photoUrl?: string | null;
   };
   professionalServices?: ProfessionalService[];
-  branches?: Array<{ id?: string; branch?: { name?: string } }>;
+  branches?: Array<{ id?: string; branchId?: string; branch?: { id?: string; name?: string } }>;
 };
 
 type ProfessionalForm = {
@@ -86,24 +89,43 @@ type ProfessionalForm = {
   color: string;
   commissionPercentage: string;
   active: boolean;
+  branchIds: string[];
 };
 
 const unwrap = (response: any): any[] => {
   if (Array.isArray(response)) return response;
   if (!response || typeof response !== "object") return [];
 
+  // Aceita os formatos mais comuns da API:
+  // [], { items: [] }, { data: [] }, { data: { items: [] } },
+  // { data: { data: [] } }, { services: [] }, etc.
   const candidates = [
     response.items,
-    response.data?.items,
-    response.data?.data,
-    response.data?.services,
+    response.data,
     response.services,
     response.results,
-    response.data,
+    response.data?.items,
+    response.data?.services,
+    response.data?.results,
+    response.data?.data,
+    response.data?.data?.items,
+    response.data?.data?.services,
   ];
 
-  const list = candidates.find((candidate) => Array.isArray(candidate));
-  return list ?? [];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  // Fallback para respostas com mais um nível de aninhamento.
+  for (const value of Object.values(response)) {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === "object") {
+      const nested = unwrap(value);
+      if (nested.length > 0) return nested;
+    }
+  }
+
+  return [];
 };
 
 const professionalsApi = baseApi.injectEndpoints({
@@ -118,11 +140,17 @@ const professionalsApi = baseApi.injectEndpoints({
       transformResponse: (response: any) => unwrap(response),
       providesTags: ["Company"],
     }),
-    getServices: builder.query<Service[], void>({
-      query: () => ({
+    getBranches: builder.query<Branch[], string>({
+      query: (companyId) => ({ url: `/branches/company/${companyId}`, method: "GET" }),
+      transformResponse: (response: any) => unwrap(response),
+      providesTags: ["Company"],
+    }),
+    getServices: builder.query<Service[], string>({
+      query: (branchId) => ({
         url: "/services",
         method: "GET",
         params: { page: 1, limit: 100 },
+        headers: { "x-branch-id": branchId },
       }),
       transformResponse: (response: any) => unwrap(response),
       providesTags: ["Company"],
@@ -261,6 +289,7 @@ const professionalsApi = baseApi.injectEndpoints({
 const {
   useGetProfessionalsQuery,
   useGetServicesQuery,
+  useGetBranchesQuery,
   useGetProfessionalServicesQuery,
   useCreateProfessionalMutation,
   useLazyFindUserByEmailQuery,
@@ -302,6 +331,7 @@ function emptyForm(): ProfessionalForm {
     color: "#B5548F",
     commissionPercentage: "0",
     active: true,
+    branchIds: [],
   };
 }
 
@@ -594,6 +624,14 @@ export default function OwnerProfessionals() {
   >({});
   const [userLookup, setUserLookup] = React.useState<any | null>(null);
   const [lookupMessage, setLookupMessage] = React.useState("");
+  const [companyId, setCompanyId] = React.useState("");
+  const [serviceBranchId, setServiceBranchId] = React.useState("");
+
+  React.useEffect(() => {
+    authStorage.getSession().then((session) => {
+      if (session?.companyId) setCompanyId(session.companyId);
+    });
+  }, []);
 
   const {
     data: professionals = [],
@@ -603,8 +641,14 @@ export default function OwnerProfessionals() {
     refetch,
   } = useGetProfessionalsQuery();
 
-  const { data: services = [], isLoading: servicesLoading } =
-    useGetServicesQuery();
+  const { data: branches = [] } = useGetBranchesQuery(companyId, { skip: !companyId });
+  const {
+    data: services = [],
+    isLoading: servicesLoading,
+    isError: servicesError,
+    error: servicesRequestError,
+    refetch: refetchServices,
+  } = useGetServicesQuery(serviceBranchId, { skip: !serviceBranchId });
   const { data: professionalServices = [] } = useGetProfessionalServicesQuery();
 
   const [createProfessional, { isLoading: creating }] =
@@ -658,12 +702,24 @@ export default function OwnerProfessionals() {
       color: professional.color ?? "#B5548F",
       commissionPercentage: String(professional.commissionPercentage ?? "0"),
       active: professional.active !== false,
+      branchIds: (professional.branches ?? [])
+        .map((item) => item.branchId ?? item.branch?.id)
+        .filter((id): id is string => Boolean(id)),
     });
     setModalVisible(true);
   }
 
   function openServices(professional: Professional) {
     setEditing(professional);
+
+    const selectedBranchId =
+      (professional.branches ?? [])
+        .map((item) => item.branchId ?? item.branch?.id)
+        .find((id): id is string => Boolean(id)) ??
+      form.branchIds[0] ??
+      "";
+
+    setServiceBranchId(selectedBranchId);
     const draft: Record<
       string,
       { linked: boolean; price: string; id?: string }
@@ -766,26 +822,38 @@ export default function OwnerProfessionals() {
           },
         }).unwrap();
       } else {
-        const created = await createProfessional(form).unwrap();
+        const created = await createProfessional({ ...form, userId }).unwrap();
         professionalId = created.id;
       }
 
       if (!professionalId)
         throw new Error("Profissional não retornado pela API.");
 
-      const branch = editing?.branches?.[0];
-      const branchPayload = {
-        professionalId,
-        color: form.color,
-        commissionPercentage:
-          Number(form.commissionPercentage.replace(",", ".")) || 0,
-        active: form.active,
-      };
+      if (!form.branchIds.length) {
+        throw new Error("Selecione pelo menos uma filial para o profissional.");
+      }
 
-      if (branch?.id) {
-        await updateBranch({ id: branch.id, ...branchPayload }).unwrap();
-      } else if (!editing) {
-        await createBranch(branchPayload).unwrap();
+      const commissionPercentage =
+        Number(form.commissionPercentage.replace(",", ".")) || 0;
+
+      for (const selectedBranchId of form.branchIds) {
+        const existingBranch = editing?.branches?.find(
+          (item) => (item.branchId ?? item.branch?.id) === selectedBranchId,
+        );
+
+        const branchPayload = {
+          professionalId,
+          branchId: selectedBranchId,
+          color: form.color,
+          commissionPercentage,
+          active: form.active,
+        };
+
+        if (existingBranch?.id) {
+          await updateBranch({ id: existingBranch.id, color: branchPayload.color, commissionPercentage: branchPayload.commissionPercentage, active: branchPayload.active }).unwrap();
+        } else {
+          await createBranch(branchPayload).unwrap();
+        }
       }
 
       setModalVisible(false);
@@ -1163,6 +1231,20 @@ export default function OwnerProfessionals() {
                 }
                 placeholder="https://"
               />
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Filiais do profissional *</Text>
+                <Text style={styles.helperText}>Selecione uma ou mais filiais onde este profissional poderá atender.</Text>
+                {branches.map((branch) => {
+                  const selected = form.branchIds.includes(branch.id);
+                  return (
+                    <Pressable key={branch.id} style={[styles.branchOption, selected && styles.branchOptionSelected]} onPress={() => setForm((old) => ({ ...old, branchIds: selected ? old.branchIds.filter((id) => id !== branch.id) : [...old.branchIds, branch.id] }))}>
+                      <Ionicons name={selected ? "checkbox" : "square-outline"} size={20} color={selected ? COLORS.primary : COLORS.textMuted} />
+                      <Text style={styles.branchOptionText}>{branch.name}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
               <View style={styles.colorField}>
                 <Text style={styles.fieldLabel}>Cor na agenda</Text>
                 <AgendaColorPicker
@@ -1248,8 +1330,41 @@ export default function OwnerProfessionals() {
                 <Ionicons name="close" size={19} color={COLORS.textSecondary} />
               </Pressable>
             </View>
-            {servicesLoading ? (
+            {!serviceBranchId ? (
+              <View style={styles.emptyState}>
+                <Ionicons
+                  name="business-outline"
+                  size={28}
+                  color={COLORS.danger}
+                />
+                <Text style={styles.emptyStateText}>
+                  Este profissional ainda não está vinculado a uma filial.
+                  Selecione uma filial antes de cadastrar os serviços.
+                </Text>
+              </View>
+            ) : servicesLoading ? (
               <ActivityIndicator size="large" color={COLORS.primary} />
+            ) : servicesError ? (
+              <View style={styles.emptyState}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={28}
+                  color={COLORS.danger}
+                />
+                <Text style={styles.emptyStateText}>
+                  Não foi possível carregar os serviços. Verifique a filial
+                  selecionada e tente novamente.
+                </Text>
+                <Text style={styles.errorDetails}>
+                  {JSON.stringify(servicesRequestError ?? {})}
+                </Text>
+                <Pressable
+                  style={styles.secondaryButton}
+                  onPress={() => refetchServices()}
+                >
+                  <Text style={styles.secondaryButtonText}>Tentar novamente</Text>
+                </Pressable>
+              </View>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false}>
                 <Text style={styles.sheetDescription}>
@@ -1618,6 +1733,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
   },
+  branchOption: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, backgroundColor: COLORS.background },
+  branchOptionSelected: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryLight },
+  branchOptionText: { flex: 1, color: COLORS.text, fontSize: 12, fontWeight: "800" },
   switchRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1697,6 +1815,25 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     borderRadius: 12,
     marginBottom: 16,
+  },
+  errorDetails: {
+    color: COLORS.textMuted,
+    fontSize: 10,
+    marginTop: 8,
+    textAlign: "center",
+  },
+  secondaryButton: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  secondaryButtonText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: "800",
   },
   emptyStateText: {
     color: COLORS.textMuted,

@@ -182,14 +182,20 @@ export default function LoginScreen() {
         `Seja bem-vindo(a), ${userName}!`,
       );
 
+      setTimeout(() => {
+        if (isOwner) {
+          router.replace("/(owner)/dashboard");
+        } else {
+          router.replace("/home");
+        }
+      }, 800);
+
       /*
        * REDIRECIONAMENTO
        *
        * Pequeno intervalo para permitir
        * que o usuário veja a confirmação.
        */
-
-     
     } catch (error: any) {
       console.error("LOGIN ERROR:", error);
 
@@ -414,7 +420,7 @@ export default function LoginScreen() {
             <View style={styles.registerContainer}>
               <Text style={styles.registerText}>Ainda não tem uma conta?</Text>
 
-              <Pressable onPress={() => router.push("/register")}>
+              <Pressable onPress={() => router.push("/account-type")}>
                 <Text style={styles.registerLink}>Cadastre-se agora</Text>
               </Pressable>
             </View>
