@@ -16,7 +16,12 @@ export default function BookingLayout() {
 
       <Stack.Screen name="professional" />
 
-      <Stack.Screen name="datetime" />
+      <Stack.Screen
+        name="date-time"
+        options={{
+          headerShown: false,
+        }}
+      />
 
       <Stack.Screen name="confirmation" />
 

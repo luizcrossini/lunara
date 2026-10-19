@@ -17,7 +17,6 @@ export default function BookingBranchScreen() {
     companyId,
     companyName,
 
-    // Parâmetros usados somente no reagendamento
     rescheduleAppointmentId,
     rescheduleProfessionalServiceId,
   } = useLocalSearchParams<{
@@ -35,42 +34,28 @@ export default function BookingBranchScreen() {
     isLoading,
     isError,
     refetch,
-  } = useGetBranchesByCompanyQuery(companyId, {
+  } = useGetBranchesByCompanyQuery(String(companyId ?? ""), {
     skip: !companyId,
   });
 
   function handleSelectBranch(branch: (typeof branches)[number]) {
-    console.log("🏢 UNIDADE SELECIONADA:", branch.id);
-
-    if (isRescheduling) {
-      console.log("🔄 FLUXO DE REAGENDAMENTO");
-
-      console.log("📌 APPOINTMENT ID:", rescheduleAppointmentId);
-
-      console.log(
-        "📌 PROFESSIONAL SERVICE ID:",
-        rescheduleProfessionalServiceId,
-      );
-    } else {
-      console.log("🆕 FLUXO DE NOVO AGENDAMENTO");
-    }
-
     router.push({
       pathname: "/booking/service",
 
       params: {
-        companyId,
-        companyName,
+        companyId: String(companyId),
+        companyName: String(companyName ?? ""),
 
-        branchId: branch.id,
-        branchName: branch.name,
+        branchId: String(branch.id),
+        branchName: String(branch.name),
 
-        // Mantemos esses parâmetros somente
-        // quando estamos reagendando.
         ...(isRescheduling
           ? {
-              rescheduleAppointmentId,
-              rescheduleProfessionalServiceId,
+              rescheduleAppointmentId: String(rescheduleAppointmentId ?? ""),
+
+              rescheduleProfessionalServiceId: String(
+                rescheduleProfessionalServiceId ?? "",
+              ),
             }
           : {}),
       },
@@ -84,158 +69,113 @@ export default function BookingBranchScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.content}>
-          {/* =====================
-              BACK
-          ===================== */}
-
-          <Pressable
-            onPress={() => router.back()}
-            style={({ pressed }) => [
-              styles.backButton,
-              pressed && styles.backButtonPressed,
-            ]}
-          >
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={22} color="#463B48" />
 
             <Text style={styles.backButtonText}>Voltar</Text>
           </Pressable>
 
-          {/* =====================
-              HEADER
-          ===================== */}
-
           <View style={styles.header}>
             <View style={styles.iconContainer}>
-              <Ionicons
-                name={isRescheduling ? "calendar-outline" : "location-outline"}
-                size={28}
-                color="#B55A91"
-              />
+              <Ionicons name="location-outline" size={28} color="#B55A91" />
             </View>
 
             <Text style={styles.step}>
               {isRescheduling ? "REAGENDAMENTO" : "PASSO 1 DE 5"}
             </Text>
 
-            <Text style={styles.title}>
-              {isRescheduling ? "Escolha uma unidade" : "Escolha uma unidade"}
-            </Text>
+            <Text style={styles.title}>Escolha uma unidade</Text>
 
             <Text style={styles.subtitle}>
               Selecione onde você deseja realizar seu atendimento em{" "}
               <Text style={styles.companyName}>{companyName}</Text>.
             </Text>
-
-            {isRescheduling && (
-              <View style={styles.rescheduleBadge}>
-                <Ionicons name="refresh-outline" size={15} color="#9D4D7D" />
-
-                <Text style={styles.rescheduleBadgeText}>
-                  Você está reagendando um atendimento
-                </Text>
-              </View>
-            )}
           </View>
 
-          {/* =====================
-              BRANCHES
-          ===================== */}
+          {isLoading && (
+            <View style={styles.centerState}>
+              <ActivityIndicator size="large" color="#B55A91" />
 
-          <View style={styles.branchesContainer}>
-            {isLoading && (
-              <View style={styles.centerState}>
-                <ActivityIndicator size="large" color="#B55A91" />
+              <Text style={styles.loadingText}>Carregando unidades...</Text>
+            </View>
+          )}
 
-                <Text style={styles.loadingText}>Carregando unidades...</Text>
-              </View>
-            )}
+          {isError && (
+            <View style={styles.centerState}>
+              <Ionicons name="alert-circle-outline" size={42} color="#B55A91" />
 
-            {isError && (
-              <View style={styles.centerState}>
-                <View style={styles.emptyIcon}>
-                  <Ionicons
-                    name="alert-circle-outline"
-                    size={32}
-                    color="#B55A91"
-                  />
+              <Text style={styles.emptyTitle}>
+                Não foi possível carregar as unidades
+              </Text>
+
+              <Text style={styles.emptyText}>
+                Verifique sua conexão e tente novamente.
+              </Text>
+
+              <Pressable
+                onPress={() => void refetch()}
+                style={styles.retryButton}
+              >
+                <Text style={styles.retryButtonText}>Tentar novamente</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {!isLoading &&
+            !isError &&
+            branches.map((branch) => (
+              <Pressable
+                key={branch.id}
+                onPress={() => handleSelectBranch(branch)}
+                style={({ pressed }) => [
+                  styles.branchCard,
+                  pressed && styles.branchCardPressed,
+                ]}
+              >
+                <View style={styles.branchIcon}>
+                  <Ionicons name="business-outline" size={25} color="#B55A91" />
                 </View>
 
-                <Text style={styles.emptyTitle}>
-                  Não foi possível carregar as unidades
-                </Text>
+                <View style={styles.branchContent}>
+                  <Text style={styles.branchName}>{branch.name}</Text>
 
-                <Text style={styles.emptyText}>
-                  Verifique sua conexão e tente novamente.
-                </Text>
-
-                <Pressable onPress={refetch} style={styles.retryButton}>
-                  <Text style={styles.retryButtonText}>Tentar novamente</Text>
-                </Pressable>
-              </View>
-            )}
-
-            {!isLoading &&
-              !isError &&
-              branches.map((branch) => (
-                <Pressable
-                  key={branch.id}
-                  onPress={() => handleSelectBranch(branch)}
-                  style={({ pressed }) => [
-                    styles.branchCard,
-                    pressed && styles.branchCardPressed,
-                  ]}
-                >
-                  <View style={styles.branchIcon}>
-                    <Ionicons
-                      name="business-outline"
-                      size={24}
-                      color="#B55A91"
-                    />
-                  </View>
-
-                  <View style={styles.branchContent}>
-                    <View style={styles.branchHeader}>
-                      <Text style={styles.branchName}>{branch.name}</Text>
-                    </View>
-
-                    <View style={styles.addressContainer}>
-                      <Ionicons
-                        name="location-outline"
-                        size={15}
-                        color="#9B8F99"
-                      />
-
-                      <Text style={styles.address}>
-                        {branch.address.street},{" "}
-                        {branch.address.number ?? "S/N"}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.city}>
-                      {branch.address.city} - {branch.address.state}
+                  {branch.address && (
+                    <Text style={styles.branchAddress}>
+                      {branch.address.street}
+                      {branch.address.number
+                        ? `, ${branch.address.number}`
+                        : ""}
+                      {"\n"}
+                      {branch.address.district}, {branch.address.city} -{" "}
+                      {branch.address.state}
                     </Text>
-                  </View>
+                  )}
 
-                  <Ionicons name="chevron-forward" size={22} color="#B55A91" />
-                </Pressable>
-              ))}
+                  {branch.phone && (
+                    <View style={styles.infoRow}>
+                      <Ionicons name="call-outline" size={14} color="#9B8F99" />
 
-            {!isLoading && !isError && branches.length === 0 && (
-              <View style={styles.emptyState}>
-                <View style={styles.emptyIcon}>
-                  <Ionicons name="business-outline" size={32} color="#B55A91" />
+                      <Text style={styles.infoText}>{branch.phone}</Text>
+                    </View>
+                  )}
                 </View>
 
-                <Text style={styles.emptyTitle}>
-                  Nenhuma unidade encontrada
-                </Text>
+                <Ionicons name="chevron-forward" size={22} color="#B9AEB8" />
+              </Pressable>
+            ))}
 
-                <Text style={styles.emptyText}>
-                  Esta empresa ainda não possui unidades disponíveis.
-                </Text>
-              </View>
-            )}
-          </View>
+          {!isLoading && !isError && branches.length === 0 && (
+            <View style={styles.centerState}>
+              <Ionicons name="business-outline" size={42} color="#B55A91" />
+
+              <Text style={styles.emptyTitle}>Nenhuma unidade disponível</Text>
+
+              <Text style={styles.emptyText}>
+                Esta empresa ainda não possui unidades disponíveis para
+                agendamento.
+              </Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -261,18 +201,12 @@ const styles = StyleSheet.create({
     paddingTop: 24,
   },
 
-  /* BACK */
-
   backButton: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
     gap: 8,
+    alignSelf: "flex-start",
     marginBottom: 28,
-  },
-
-  backButtonPressed: {
-    opacity: 0.65,
   },
 
   backButtonText: {
@@ -281,11 +215,9 @@ const styles = StyleSheet.create({
     color: "#463B48",
   },
 
-  /* HEADER */
-
   header: {
     alignItems: "center",
-    marginBottom: 32,
+    marginBottom: 30,
   },
 
   iconContainer: {
@@ -327,58 +259,21 @@ const styles = StyleSheet.create({
     color: "#463B48",
   },
 
-  rescheduleBadge: {
-    marginTop: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#F8EDF4",
-    borderWidth: 1,
-    borderColor: "#E8D1DE",
-  },
-
-  rescheduleBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#9D4D7D",
-  },
-
-  /* BRANCHES */
-
-  branchesContainer: {
-    gap: 14,
-  },
-
   branchCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    gap: 15,
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "#E8DDE7",
     padding: 18,
-
-    shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
+    marginBottom: 14,
   },
 
   branchCardPressed: {
-    opacity: 0.8,
-    transform: [
-      {
-        scale: 0.985,
-      },
-    ],
+    opacity: 0.75,
+    transform: [{ scale: 0.985 }],
   },
 
   branchIcon: {
@@ -394,44 +289,36 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  branchHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-
   branchName: {
-    flex: 1,
     fontSize: 16,
     fontWeight: "700",
     color: "#2E2430",
+    marginBottom: 5,
   },
 
-  addressContainer: {
+  branchAddress: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#7B7280",
+    marginBottom: 8,
+  },
+
+  infoRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    marginBottom: 4,
+    gap: 6,
   },
 
-  address: {
-    flex: 1,
-    fontSize: 12,
-    color: "#7B7280",
-  },
-
-  city: {
+  infoText: {
     fontSize: 12,
     color: "#9B8F99",
   },
 
-  /* STATES */
-
   centerState: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 50,
-    paddingHorizontal: 24,
+    paddingVertical: 55,
+    paddingHorizontal: 25,
   },
 
   loadingText: {
@@ -440,32 +327,16 @@ const styles = StyleSheet.create({
     color: "#7B7280",
   },
 
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 50,
-    paddingHorizontal: 24,
-  },
-
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: "#F4E8F0",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-  },
-
   emptyTitle: {
+    marginTop: 14,
     fontSize: 17,
     fontWeight: "700",
     color: "#2E2430",
     textAlign: "center",
-    marginBottom: 8,
   },
 
   emptyText: {
+    marginTop: 8,
     fontSize: 13,
     lineHeight: 20,
     color: "#7B7280",
@@ -481,8 +352,8 @@ const styles = StyleSheet.create({
   },
 
   retryButtonText: {
+    color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "700",
-    color: "#FFFFFF",
   },
 });

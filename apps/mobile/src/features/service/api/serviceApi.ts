@@ -19,7 +19,8 @@ export type Service = {
 
 type ServicesResponse = {
   success: boolean;
-  timestamp: string;
+  timestamp?: string;
+
   data: {
     items: Service[];
     total: number;
@@ -37,9 +38,14 @@ export const serviceApi = baseApi.injectEndpoints({
   overrideExisting: true,
 
   endpoints: (builder) => ({
+    /**
+     * ============================================================
+     * CLIENTE / AGENDAMENTO PÚBLICO
+     * ============================================================
+     */
     getServicesByBranch: builder.query<Service[], GetServicesByBranchParams>({
       query: ({ companyId, branchId }) => ({
-        url: `services/public/company/${companyId}/branch/${branchId}`,
+        url: `/services/public/company/${companyId}/branch/${branchId}`,
         method: "GET",
 
         params: {
@@ -50,16 +56,10 @@ export const serviceApi = baseApi.injectEndpoints({
       }),
 
       transformResponse: (response: ServicesResponse) => {
-
-
-        return response.data.items;
+        return response?.data?.items ?? [];
       },
 
-      transformErrorResponse: (response) => {
-
-
-        return response;
-      },
+      transformErrorResponse: (response) => response,
     }),
   }),
 });

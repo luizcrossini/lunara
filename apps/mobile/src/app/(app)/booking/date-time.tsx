@@ -12,26 +12,34 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 
 import { useGetPublicAvailabilityQuery } from "@/features/appointment/api/appointmentAvailabilityApi";
+
 import { baseApi } from "@/core/api/baseApi";
 
 const appointmentOrderApi = baseApi.injectEndpoints({
   overrideExisting: true,
+
   endpoints: (builder) => ({
     rescheduleAppointment: builder.mutation<
       unknown,
       {
         appointmentId: string;
+
         scheduledDate: string;
+
         items: {
           professionalServiceId: string;
+
           startsAt: string;
+
           endsAt: string;
         }[];
       }
     >({
       query: ({ appointmentId, scheduledDate, items }) => ({
         url: `/appointment-orders/${appointmentId}/reschedule`,
+
         method: "PATCH",
+
         body: { scheduledDate, items },
       }),
     }),
@@ -42,23 +50,28 @@ const { useRescheduleAppointmentMutation } = appointmentOrderApi;
 
 interface AvailableSlot {
   start: string;
+
   end: string;
 }
 
 export default function BookingDateTimeScreen() {
   const {
     companyId,
+
     companyName,
 
     branchId,
+
     branchName,
 
     serviceIds,
+
     serviceNames,
 
     professionalBranchId,
 
     professionalId,
+
     professionalName,
 
     professionalServiceIds,
@@ -66,20 +79,25 @@ export default function BookingDateTimeScreen() {
     customerId,
 
     rescheduleAppointmentId,
+
     rescheduleProfessionalServiceId,
   } = useLocalSearchParams<{
     companyId: string;
+
     companyName?: string;
 
     branchId: string;
+
     branchName?: string;
 
     serviceIds: string;
+
     serviceNames?: string;
 
     professionalBranchId?: string;
 
     professionalId: string;
+
     professionalName?: string;
 
     professionalServiceIds?: string;
@@ -87,6 +105,7 @@ export default function BookingDateTimeScreen() {
     customerId?: string;
 
     rescheduleAppointmentId?: string;
+
     rescheduleProfessionalServiceId?: string;
   }>();
 
@@ -96,18 +115,40 @@ export default function BookingDateTimeScreen() {
     useRescheduleAppointmentMutation();
 
   /*
+
   ========================================
+
   GERA AS PRÓXIMAS DATAS
+
   ========================================
+
   */
 
   const availableDates = useMemo(() => {
     const dates: Date[] = [];
 
-    for (let i = 0; i < 14; i++) {
-      const date = new Date();
+    const now = new Date();
 
-      date.setDate(date.getDate() + i);
+    const today = new Date(
+      now.getFullYear(),
+
+      now.getMonth(),
+
+      now.getDate(),
+
+      12,
+
+      0,
+
+      0,
+
+      0,
+    );
+
+    for (let i = 0; i < 14; i++) {
+      const date = new Date(today);
+
+      date.setDate(today.getDate() + i);
 
       dates.push(date);
     }
@@ -116,10 +157,15 @@ export default function BookingDateTimeScreen() {
   }, []);
 
   /*
+
   ========================================
+
   FORMATA DATA PARA API
+
   YYYY-MM-DD
+
   ========================================
+
   */
 
   function formatDateForApi(date: Date) {
@@ -132,10 +178,24 @@ export default function BookingDateTimeScreen() {
     return `${year}-${month}-${day}`;
   }
 
+  function formatDisplayDate(value: string) {
+    const [year, month, day] = value.split("-");
+
+    if (!year || !month || !day) {
+      return value;
+    }
+
+    return `${day}/${month}/${year}`;
+  }
+
   /*
+
   ========================================
+
   FORMATA HORÁRIO
+
   ========================================
+
   */
 
   function formatTime(value: string) {
@@ -146,19 +206,22 @@ export default function BookingDateTimeScreen() {
     const date = new Date(value);
 
     if (!Number.isNaN(date.getTime())) {
-      return date.toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+      return `${String(date.getUTCHours()).padStart(2, "0")}:${String(
+        date.getUTCMinutes(),
+      ).padStart(2, "0")}`;
     }
 
     return value;
   }
 
   /*
+
   ========================================
+
   DATA E HORÁRIO SELECIONADOS
+
   ========================================
+
   */
 
   const [selectedDate, setSelectedDate] = useState(
@@ -168,9 +231,13 @@ export default function BookingDateTimeScreen() {
   const [selectedSlot, setSelectedSlot] = useState<AvailableSlot | null>(null);
 
   /*
+
   ========================================
+
   CONVERTE SERVICES
+
   ========================================
+
   */
 
   const parsedServiceIds = useMemo(() => {
@@ -180,25 +247,36 @@ export default function BookingDateTimeScreen() {
 
     return String(serviceIds)
       .split(",")
+
       .map((id) => id.trim())
+
       .filter(Boolean);
   }, [serviceIds]);
 
   /*
+
   ========================================
+
   API
+
   ========================================
+
   */
 
   const { data, isLoading, isFetching, isError, error } =
     useGetPublicAvailabilityQuery(
       {
         companyId,
+
         branchId,
+
         professionalId,
+
         date: selectedDate,
+
         serviceIds: parsedServiceIds,
       },
+
       {
         skip:
           !companyId ||
@@ -208,13 +286,71 @@ export default function BookingDateTimeScreen() {
       },
     );
 
-  const availableSlots: AvailableSlot[] = (data?.availableSlots ??
-    []) as AvailableSlot[];
+  const availableSlots: AvailableSlot[] = useMemo(() => {
+    console.log("========== DATE-TIME AVAILABILITY ==========");
+    console.log("selectedDate:", selectedDate);
+    console.log("professionalId:", professionalId);
+    console.log("serviceIds:", parsedServiceIds);
+    console.log("isLoading:", isLoading);
+    console.log("isFetching:", isFetching);
+    console.log("isError:", isError);
+    console.log("error:", JSON.stringify(error, null, 2));
+    console.log("RAW DATA:", JSON.stringify(data, null, 2));
+
+    const response = (data as any)?.data ?? data;
+
+    console.log("NORMALIZED RESPONSE:", JSON.stringify(response, null, 2));
+    console.log(
+      "RAW AVAILABLE SLOTS:",
+      JSON.stringify(response?.availableSlots, null, 2),
+    );
+
+    if (!Array.isArray(response?.availableSlots)) {
+      console.log("⚠️ availableSlots não é um array.");
+      console.log("=============================================");
+      return [];
+    }
+
+    const slots = response.availableSlots
+      .filter(
+        (slot: any) =>
+          slot &&
+          typeof slot.start === "string" &&
+          typeof slot.end === "string",
+      )
+      .map((slot: any) => ({
+        start: slot.start,
+        end: slot.end,
+      }))
+      .sort(
+        (a: AvailableSlot, b: AvailableSlot) =>
+          new Date(a.start).getTime() - new Date(b.start).getTime(),
+      );
+
+    console.log("NORMALIZED SLOTS:", JSON.stringify(slots, null, 2));
+    console.log("TOTAL SLOTS:", slots.length);
+    console.log("=============================================");
+
+    return slots;
+  }, [
+    data,
+    selectedDate,
+    professionalId,
+    parsedServiceIds,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+  ]);
 
   /*
+
   ========================================
+
   SELECIONAR DATA
+
   ========================================
+
   */
 
   function handleSelectDate(date: Date) {
@@ -226,9 +362,13 @@ export default function BookingDateTimeScreen() {
   }
 
   /*
+
   ========================================
+
   SELECIONAR HORÁRIO
+
   ========================================
+
   */
 
   function handleSelectTime(slot: AvailableSlot) {
@@ -236,9 +376,13 @@ export default function BookingDateTimeScreen() {
   }
 
   /*
+
   ========================================
+
   CONTINUAR
+
   ========================================
+
   */
 
   async function handleContinue() {
@@ -251,7 +395,9 @@ export default function BookingDateTimeScreen() {
         rescheduleProfessionalServiceId ||
           String(professionalServiceIds ?? "")
             .split(",")
+
             .map((id) => id.trim())
+
             .filter(Boolean)[0] ||
           "",
       );
@@ -259,25 +405,35 @@ export default function BookingDateTimeScreen() {
       if (!rescheduleAppointmentId || !professionalServiceId) {
         console.error("❌ Dados de reagendamento incompletos", {
           rescheduleAppointmentId,
+
           professionalServiceId,
         });
+
         return;
       }
 
       try {
         console.log("🔄 REAGENDANDO AGENDAMENTO");
+
         console.log("📌 ID:", rescheduleAppointmentId);
+
         console.log("📌 DATA:", selectedDate);
+
         console.log("📌 INÍCIO:", selectedSlot.start);
+
         console.log("📌 FIM:", selectedSlot.end);
 
         await rescheduleAppointment({
           appointmentId: String(rescheduleAppointmentId),
+
           scheduledDate: selectedDate,
+
           items: [
             {
               professionalServiceId,
+
               startsAt: selectedSlot.start,
+
               endsAt: selectedSlot.end,
             },
           ],
@@ -286,6 +442,7 @@ export default function BookingDateTimeScreen() {
         console.log("✅ REAGENDAMENTO CONCLUÍDO");
 
         router.replace("/(app)/(tabs)/my-appointments");
+
         return;
       } catch (error: any) {
         console.error("❌ ERRO AO REAGENDAR:", error);
@@ -297,35 +454,54 @@ export default function BookingDateTimeScreen() {
           "Não foi possível reagendar o atendimento.";
 
         alert(Array.isArray(message) ? message.join("\n") : String(message));
+
         return;
       }
     }
 
     router.push({
       pathname: "/booking/customer",
+
       params: {
         companyId: String(companyId),
+
         companyName: String(companyName ?? ""),
+
         branchId: String(branchId),
+
         branchName: String(branchName ?? ""),
+
         serviceIds: String(serviceIds),
+
         serviceNames: String(serviceNames ?? ""),
+
         professionalBranchId: String(professionalBranchId ?? ""),
+
         professionalId: String(professionalId),
+
         professionalName: String(professionalName ?? ""),
+
         professionalServiceIds: String(professionalServiceIds ?? ""),
+
         date: selectedDate,
+
         startTime: selectedSlot.start,
+
         endTime: selectedSlot.end,
+
         ...(customerId ? { customerId: String(customerId) } : {}),
       },
     });
   }
 
   /*
+
   ========================================
+
   RENDER
+
   ========================================
+
   */
 
   return (
@@ -372,7 +548,9 @@ export default function BookingDateTimeScreen() {
 
       <ScrollView
         horizontal
+
         showsHorizontalScrollIndicator={false}
+
         contentContainerStyle={styles.datesContainer}
       >
         {availableDates.map((date) => {
@@ -380,20 +558,30 @@ export default function BookingDateTimeScreen() {
 
           const isSelected = formattedDate === selectedDate;
 
-          const weekDay = date.toLocaleDateString("pt-BR", {
-            weekday: "short",
-          });
+          const weekDay = date
 
-          const day = date.getDate();
+            .toLocaleDateString("pt-BR", {
+              weekday: "short",
+            })
 
-          const month = date.toLocaleDateString("pt-BR", {
-            month: "short",
-          });
+            .replace(".", "");
+
+          const day = String(date.getDate());
+
+          const month = date
+
+            .toLocaleDateString("pt-BR", {
+              month: "short",
+            })
+
+            .replace(".", "");
 
           return (
             <Pressable
               key={formattedDate}
+
               onPress={() => handleSelectDate(date)}
+
               style={[styles.dateCard, isSelected && styles.dateCardSelected]}
             >
               <Text
@@ -422,12 +610,13 @@ export default function BookingDateTimeScreen() {
         <Text style={styles.sectionTitle}>Horários disponíveis</Text>
 
         <Text style={styles.selectedDateText}>
-          {new Date(`${selectedDate}T12:00:00`).toLocaleDateString("pt-BR")}
+          {formatDisplayDate(selectedDate)}
         </Text>
       </View>
 
       <ScrollView
         contentContainerStyle={styles.content}
+
         showsVerticalScrollIndicator={false}
       >
         {/* LOADING */}
@@ -479,7 +668,9 @@ export default function BookingDateTimeScreen() {
               return (
                 <Pressable
                   key={`${slot.start}-${slot.end}`}
+
                   onPress={() => handleSelectTime(slot)}
+
                   style={[
                     styles.timeButton,
 
@@ -517,9 +708,12 @@ export default function BookingDateTimeScreen() {
       <View style={styles.footer}>
         <Pressable
           onPress={handleContinue}
+
           disabled={!selectedSlot || isReschedulingAppointment}
+
           style={[
             styles.continueButton,
+
             (!selectedSlot || isReschedulingAppointment) &&
               styles.continueButtonDisabled,
           ]}
@@ -538,9 +732,13 @@ export default function BookingDateTimeScreen() {
 }
 
 /*
+
 ========================================
+
 STYLES
+
 ========================================
+
 */
 
 const styles = StyleSheet.create({

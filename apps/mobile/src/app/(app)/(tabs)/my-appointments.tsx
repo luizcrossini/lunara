@@ -11,37 +11,50 @@ import {
 } from "react-native";
 
 import { router, useFocusEffect } from "expo-router";
+
 import { useCallback, useState } from "react";
 
 import { baseApi } from "@/core/api/baseApi";
+
 import { useAuth } from "@/core/auth/auth-context";
 
 /*
+
  * ============================================================
+
  * TIPOS
+
  * ============================================================
+
  */
 
 type CustomerResponse = {
   id: string;
+
   userId?: string;
 
   user?: {
     id?: string;
+
     name?: string;
+
     email?: string;
+
     phone?: string | null;
   };
 };
 
 type AppointmentItem = {
   id: string;
+
   professionalServiceId: string;
 
   startsAt: string;
+
   endsAt: string;
 
   durationMinutes?: number;
+
   price?: string | number;
 
   status?: string;
@@ -49,7 +62,9 @@ type AppointmentItem = {
   professionalService?: {
     service?: {
       id?: string;
+
       name?: string;
+
       durationMinutes?: number;
     };
 
@@ -58,7 +73,9 @@ type AppointmentItem = {
 
       user?: {
         id?: string;
+
         name?: string;
+
         photoUrl?: string | null;
       };
     };
@@ -67,7 +84,9 @@ type AppointmentItem = {
 
 type Appointment = {
   id: string;
+
   branchId?: string;
+
   customerId: string;
 
   status: string;
@@ -75,17 +94,21 @@ type Appointment = {
   scheduledDate: string;
 
   totalDurationMinutes?: number;
+
   totalPrice?: string | number;
 
   notes?: string | null;
 
   branch?: {
     id?: string;
+
     name?: string;
 
     company?: {
       id?: string;
+
       name?: string;
+
       slug?: string;
     };
   };
@@ -95,34 +118,38 @@ type Appointment = {
 
 type PaginatedAppointments = {
   items: Appointment[];
+
   total: number;
+
   page: number;
+
   limit: number;
 };
 
 /*
+
  * ============================================================
+
  * API
+
  * ============================================================
+
  *
+
  * Usamos nomes específicos desta tela para não sobrescrever
+
  * nenhum endpoint que já exista no appointmentOrderApi.
+
  */
 
 const myAppointmentsApi = baseApi.injectEndpoints({
-  overrideExisting: false,
+  overrideExisting: true,
 
   endpoints: (builder) => ({
-    findMyCustomer: builder.query<any, string>({
-      query: (email) => ({
-        url: "/customers",
+    findMyCustomer: builder.query<any, void>({
+      query: () => ({
+        url: "/customers/me",
         method: "GET",
-
-        params: {
-          search: email,
-          page: 1,
-          limit: 100,
-        },
       }),
     }),
 
@@ -132,6 +159,7 @@ const myAppointmentsApi = baseApi.injectEndpoints({
 
         return {
           url: `/appointment-orders/${appointmentId}/status/CONFIRMED`,
+
           method: "PATCH",
         };
       },
@@ -143,7 +171,9 @@ const myAppointmentsApi = baseApi.injectEndpoints({
     >({
       query: ({ appointmentId, notes }) => ({
         url: `/appointment-orders/${appointmentId}`,
+
         method: "PATCH",
+
         body: {
           notes,
         },
@@ -152,41 +182,45 @@ const myAppointmentsApi = baseApi.injectEndpoints({
 
     getMyAppointments: builder.query<PaginatedAppointments, string>({
       query: (customerId) => ({
-        url: "/appointment-orders",
-
+        url: `/appointment-orders/customer/${customerId}`,
         method: "GET",
-
-        params: {
-          customerId,
-          page: 1,
-          limit: 100,
-        },
+        params: { page: 1, limit: 100 },
       }),
-
       transformResponse: (response: any): PaginatedAppointments => {
-        return (
-          response?.data ??
-          response ?? {
-            items: [],
-            total: 0,
-            page: 1,
-            limit: 100,
-          }
-        );
+        const payload = response?.data?.data ?? response?.data ?? response;
+        const items = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.items)
+            ? payload.items
+            : Array.isArray(payload?.data)
+              ? payload.data
+              : [];
+        return {
+          items,
+          total: Number(payload?.total ?? items.length),
+          page: Number(payload?.page ?? 1),
+          limit: Number(payload?.limit ?? 100),
+        };
       },
     }),
   }),
 });
 
 /*
+
  * ============================================================
+
  * HELPERS
+
  * ============================================================
+
  */
 
 function getCustomerFromResponse(
   response: any,
+
   userId?: string,
+
   email?: string,
 ): CustomerResponse | null {
   const customers: CustomerResponse[] = Array.isArray(response)
@@ -215,9 +249,13 @@ function formatDate(value?: string) {
   }
 
   /*
+
    * Para datas no formato YYYY-MM-DD, não usamos
+
    * new Date(value), evitando deslocamento de fuso.
+
    */
+
   const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 
   if (dateOnlyMatch) {
@@ -234,8 +272,11 @@ function formatDate(value?: string) {
 
   return date.toLocaleDateString("pt-BR", {
     day: "2-digit",
+
     month: "2-digit",
+
     year: "numeric",
+
     timeZone: "America/Sao_Paulo",
   });
 }
@@ -253,29 +294,41 @@ function formatLongDate(value?: string) {
 
   return date.toLocaleDateString("pt-BR", {
     weekday: "long",
+
     day: "2-digit",
+
     month: "long",
+
     year: "numeric",
+
     timeZone: "America/Sao_Paulo",
   });
 }
 
 function formatTime(value?: string) {
-  if (!value) {
-    return "--:--";
+  if (!value) return "--:--";
+
+  const text = String(value).trim();
+
+  // Preserva o horário de parede brasileiro retornado pela API.
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+
+  if (match) {
+    return `${match[4]}:${match[5]}`;
   }
 
-  const date = new Date(value);
+  const date = new Date(text);
 
   if (Number.isNaN(date.getTime())) {
     return "--:--";
   }
 
-  return date.toLocaleTimeString("pt-BR", {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "America/Sao_Paulo",
-  });
+    hourCycle: "h23",
+  }).format(date);
 }
 
 function formatPrice(value?: string | number) {
@@ -287,6 +340,7 @@ function formatPrice(value?: string | number) {
 
   return price.toLocaleString("pt-BR", {
     style: "currency",
+
     currency: "BRL",
   });
 }
@@ -321,57 +375,87 @@ function isFinishedStatus(status?: string) {
 }
 
 /*
+
  * ============================================================
+
  * SCREEN
+
  * ============================================================
+
  */
 
 export default function MyAppointmentsScreen() {
   const { user } = useAuth();
 
   /*
+
    * ----------------------------------------------------------
+
    * BUSCAR CUSTOMER PROFILE
+
    * ----------------------------------------------------------
+
    *
+
    * O User.id não é o CustomerProfile.id.
+
    * Por isso buscamos o customer pelo e-mail do usuário.
+
    */
 
   const {
     data: customerResponse,
+
     isLoading: customerLoading,
+
     isFetching: customerFetching,
+
     refetch: refetchCustomer,
-  } = myAppointmentsApi.useFindMyCustomerQuery(user?.email ?? "", {
-    skip: !user?.email,
+  } = myAppointmentsApi.useFindMyCustomerQuery(undefined, {
+    skip: !user?.id,
   });
 
-  const customer = getCustomerFromResponse(
-    customerResponse,
-    user?.id,
-    user?.email,
-  );
-
+  const customer =
+    customerResponse?.data?.data ?? customerResponse?.data ?? customerResponse;
   const customerId = customer?.id ?? "";
 
+  console.log("[my-appointments] userId:", user?.id);
+  console.log("[my-appointments] customerId:", customerId);
+
   /*
+
    * ----------------------------------------------------------
+
    * BUSCAR AGENDAMENTOS
+
    * ----------------------------------------------------------
+
    */
 
   const {
     data: appointmentsResponse,
+
     isLoading: appointmentsLoading,
+
     isFetching: appointmentsFetching,
+
     isError,
+
+    error: appointmentsError,
+
     refetch: refetchAppointments,
   } = myAppointmentsApi.useGetMyAppointmentsQuery(customerId, {
     skip: !customerId,
   });
 
-  const appointments = appointmentsResponse?.items ?? [];
+  const appointments = Array.isArray(appointmentsResponse?.items)
+    ? appointmentsResponse.items
+    : [];
+
+  console.log("[my-appointments] appointments count:", appointments.length);
+  if (isError) {
+    console.error("[my-appointments] API error:", appointmentsError);
+  }
 
   const [confirmAppointment, { isLoading: isConfirming }] =
     myAppointmentsApi.useConfirmAppointmentMutation();
@@ -384,13 +468,19 @@ export default function MyAppointmentsScreen() {
   const [noteAppointment, setNoteAppointment] = useState<Appointment | null>(
     null,
   );
+
   const [noteDraft, setNoteDraft] = useState("");
 
   /*
+
    * ==========================================================
+
    * ATUALIZAÇÃO AUTOMÁTICA AO VOLTAR PARA A TELA
+
    * ==========================================================
+
    */
+
   useFocusEffect(
     useCallback(() => {
       if (!customerId) {
@@ -404,14 +494,19 @@ export default function MyAppointmentsScreen() {
   );
 
   /*
+
    * ----------------------------------------------------------
+
    * SEPARA PRÓXIMOS E HISTÓRICO
+
    * ----------------------------------------------------------
+
    */
 
   const now = Date.now();
 
   const upcomingAppointments = appointments
+
     .filter((appointment) => {
       if (isFinishedStatus(appointment.status)) {
         return false;
@@ -424,6 +519,7 @@ export default function MyAppointmentsScreen() {
 
       return !Number.isNaN(date.getTime()) && date.getTime() >= now;
     })
+
     .sort((a, b) => {
       const aDate = new Date(
         a.items?.[0]?.startsAt ?? a.scheduledDate,
@@ -437,6 +533,7 @@ export default function MyAppointmentsScreen() {
     });
 
   const historyAppointments = appointments
+
     .filter((appointment) => {
       if (isFinishedStatus(appointment.status)) {
         return true;
@@ -449,6 +546,7 @@ export default function MyAppointmentsScreen() {
 
       return !Number.isNaN(date.getTime()) && date.getTime() < now;
     })
+
     .sort((a, b) => {
       const aDate = new Date(
         a.items?.[0]?.startsAt ?? a.scheduledDate,
@@ -466,9 +564,13 @@ export default function MyAppointmentsScreen() {
   const refreshing = customerFetching || appointmentsFetching;
 
   /*
+
    * ==========================================================
+
    * REFRESH
+
    * ==========================================================
+
    */
 
   async function handleRefresh() {
@@ -480,15 +582,20 @@ export default function MyAppointmentsScreen() {
   }
 
   /*
+
    * ==========================================================
+
    * CARD
+
    * ==========================================================
+
    */
 
   function renderAppointment(appointment: Appointment, isHistory = false) {
     const item = appointment.items?.[0];
 
     const startsAt = item?.startsAt ?? appointment.scheduledDate;
+
     const endsAt = item?.endsAt;
 
     const serviceName = item?.professionalService?.service?.name ?? "Serviço";
@@ -510,9 +617,13 @@ export default function MyAppointmentsScreen() {
 
     async function handleConfirm() {
       console.log("================================");
+
       console.log("🔥 BOTÃO CONFIRMAR CLICADO");
+
       console.log("📌 Appointment ID:", appointment.id);
+
       console.log("📌 Status atual:", appointment.status);
+
       console.log("================================");
 
       if (!appointment.id) {
@@ -526,11 +637,13 @@ export default function MyAppointmentsScreen() {
       if (appointment.status !== "PENDING") {
         console.warn(
           "⚠️ Agendamento não está mais pendente.",
+
           appointment.status,
         );
 
         Alert.alert(
           "Agendamento",
+
           `Este agendamento já está com status "${getStatusLabel(
             appointment.status,
           )}".`,
@@ -556,10 +669,13 @@ export default function MyAppointmentsScreen() {
 
         Alert.alert(
           "Agendamento confirmado! 🎉",
+
           "Seu horário foi confirmado com sucesso.",
+
           [
             {
               text: "OK",
+
               onPress: async () => {
                 console.log("🔄 Atualizando lista de agendamentos...");
 
@@ -589,6 +705,7 @@ export default function MyAppointmentsScreen() {
 
         Alert.alert(
           "Erro ao confirmar",
+
           Array.isArray(message) ? message.join("\n") : String(message),
         );
       }
@@ -596,7 +713,9 @@ export default function MyAppointmentsScreen() {
 
     function handleReschedule() {
       console.log("🔄 REAGENDAR CLICADO");
+
       console.log("📌 APPOINTMENT ID:", appointment.id);
+
       console.log("📌 BRANCH ID:", appointment.branchId);
 
       const item = appointment.items?.[0];
@@ -604,9 +723,12 @@ export default function MyAppointmentsScreen() {
       if (!item) {
         console.error(
           "❌ Agendamento não possui item.",
+
           "Appointment ID:",
+
           appointment.id,
         );
+
         return;
       }
 
@@ -616,11 +738,16 @@ export default function MyAppointmentsScreen() {
       if (!professionalServiceId) {
         console.error(
           "❌ ProfessionalServiceId não encontrado.",
+
           "Appointment ID:",
+
           appointment.id,
+
           "Item ID:",
+
           item.id,
         );
+
         return;
       }
 
@@ -629,9 +756,12 @@ export default function MyAppointmentsScreen() {
       if (!branchId) {
         console.error(
           "❌ BranchId não encontrado.",
+
           "Appointment ID:",
+
           appointment.id,
         );
+
         return;
       }
 
@@ -645,26 +775,35 @@ export default function MyAppointmentsScreen() {
       if (!companyId) {
         console.error(
           "❌ CompanyId não encontrado no agendamento.",
+
           "Appointment ID:",
+
           appointment.id,
         );
+
         return;
       }
 
       console.log("📌 COMPANY ID:", companyId);
+
       console.log("📌 COMPANY NAME:", companyName);
+
       console.log("📌 BRANCH ID:", branchId);
+
       console.log("📌 PROFESSIONAL SERVICE ID:", professionalServiceId);
 
       setIsRescheduling(true);
 
       router.push({
         pathname: "/booking/branch",
+
         params: {
           companyId: String(companyId),
+
           companyName: String(companyName),
 
           branchId: String(branchId),
+
           branchName: String(appointment.branch?.name ?? ""),
 
           rescheduleAppointmentId: String(appointment.id),
@@ -678,6 +817,7 @@ export default function MyAppointmentsScreen() {
 
     function handleNote() {
       setNoteAppointment(appointment);
+
       setNoteDraft(appointment.notes ?? "");
     }
 
@@ -688,17 +828,22 @@ export default function MyAppointmentsScreen() {
             <Text style={styles.dateDay}>
               {new Date(startsAt).toLocaleDateString("pt-BR", {
                 day: "2-digit",
+
                 timeZone: "America/Sao_Paulo",
               })}
             </Text>
 
             <Text style={styles.dateMonth}>
               {new Date(startsAt)
+
                 .toLocaleDateString("pt-BR", {
                   month: "short",
+
                   timeZone: "America/Sao_Paulo",
                 })
+
                 .replace(".", "")
+
                 .toUpperCase()}
             </Text>
           </View>
@@ -723,7 +868,9 @@ export default function MyAppointmentsScreen() {
 
               <Text style={styles.infoText}>
                 {formatTime(startsAt)}
+
                 {" - "}
+
                 {formatTime(endsAt)}
               </Text>
             </View>
@@ -740,12 +887,14 @@ export default function MyAppointmentsScreen() {
               <View
                 style={[
                   styles.statusBadge,
+
                   isHistory && styles.historyStatusBadge,
                 ]}
               >
                 <Text
                   style={[
                     styles.statusText,
+
                     isHistory && styles.historyStatusText,
                   ]}
                 >
@@ -761,14 +910,18 @@ export default function MyAppointmentsScreen() {
                 {canConfirm && (
                   <Pressable
                     disabled={isConfirming}
+
                     onPress={() => {
                       console.log("🟢 PRESS NO BOTÃO CONFIRMAR");
 
                       void handleConfirm();
                     }}
+
                     style={({ pressed }) => [
                       styles.confirmButton,
+
                       pressed && styles.actionPressed,
+
                       isConfirming && styles.actionDisabled,
                     ]}
                   >
@@ -785,10 +938,14 @@ export default function MyAppointmentsScreen() {
                 {canReschedule && (
                   <Pressable
                     disabled={isRescheduling}
+
                     onPress={handleReschedule}
+
                     style={({ pressed }) => [
                       styles.secondaryActionButton,
+
                       pressed && styles.actionPressed,
+
                       isRescheduling && styles.actionDisabled,
                     ]}
                   >
@@ -801,10 +958,14 @@ export default function MyAppointmentsScreen() {
                 {canAddNote && (
                   <Pressable
                     disabled={isSavingNotes}
+
                     onPress={handleNote}
+
                     style={({ pressed }) => [
                       styles.noteButton,
+
                       pressed && styles.actionPressed,
+
                       isSavingNotes && styles.actionDisabled,
                     ]}
                   >
@@ -834,9 +995,13 @@ export default function MyAppointmentsScreen() {
   }
 
   /*
+
    * Pequeno componente para manter os ícones
+
    * simples e sem dependência adicional.
+
    */
+
   function IonIcon({ name }: { name: "time-outline" | "location-outline" }) {
     return (
       <Text style={styles.infoIcon}>{name === "time-outline" ? "◷" : "⌖"}</Text>
@@ -844,15 +1009,21 @@ export default function MyAppointmentsScreen() {
   }
 
   /*
+
    * ==========================================================
+
    * RENDER
+
    * ==========================================================
+
    */
 
   return (
     <View style={styles.container}>
       {/* ==================================================== */}
+
       {/* HEADER */}
+
       {/* ==================================================== */}
 
       <View style={styles.header}>
@@ -870,12 +1041,16 @@ export default function MyAppointmentsScreen() {
       </View>
 
       {/* ==================================================== */}
+
       {/* CONTENT */}
+
       {/* ==================================================== */}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+
         contentContainerStyle={styles.content}
+
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
@@ -919,6 +1094,7 @@ export default function MyAppointmentsScreen() {
 
             <Pressable
               onPress={() => router.push("/booking")}
+
               style={styles.primaryButton}
             >
               <Text style={styles.primaryButtonText}>Criar agendamento</Text>
@@ -927,7 +1103,9 @@ export default function MyAppointmentsScreen() {
         ) : (
           <>
             {/* ============================================== */}
+
             {/* PRÓXIMOS */}
+
             {/* ============================================== */}
 
             {upcomingAppointments.length > 0 && (
@@ -947,13 +1125,17 @@ export default function MyAppointmentsScreen() {
             )}
 
             {/* ============================================== */}
+
             {/* NOVO AGENDAMENTO */}
+
             {/* ============================================== */}
 
             <Pressable
               onPress={() => router.push("/booking")}
+
               style={({ pressed }) => [
                 styles.newAppointmentButton,
+
                 pressed && styles.cardPressed,
               ]}
             >
@@ -973,7 +1155,9 @@ export default function MyAppointmentsScreen() {
             </Pressable>
 
             {/* ============================================== */}
+
             {/* HISTÓRICO */}
+
             {/* ============================================== */}
 
             {historyAppointments.length > 0 && (
@@ -1004,11 +1188,17 @@ export default function MyAppointmentsScreen() {
 
               <TextInput
                 value={noteDraft}
+
                 onChangeText={setNoteDraft}
+
                 placeholder="Ex.: Tenho alergia a determinado produto..."
+
                 placeholderTextColor="#9CA3AF"
+
                 multiline
+
                 maxLength={500}
+
                 style={styles.noteInput}
               />
 
@@ -1017,10 +1207,13 @@ export default function MyAppointmentsScreen() {
               <View style={styles.noteEditorActions}>
                 <Pressable
                   disabled={isSavingNotes}
+
                   onPress={() => {
                     setNoteAppointment(null);
+
                     setNoteDraft("");
                   }}
+
                   style={styles.noteCancelButton}
                 >
                   <Text style={styles.noteCancelText}>Cancelar</Text>
@@ -1028,20 +1221,24 @@ export default function MyAppointmentsScreen() {
 
                 <Pressable
                   disabled={isSavingNotes}
+
                   onPress={async () => {
                     if (!noteAppointment) return;
 
                     try {
                       await updateAppointmentNotes({
                         appointmentId: noteAppointment.id,
+
                         notes: noteDraft.trim(),
                       }).unwrap();
 
                       setNoteAppointment(null);
+
                       setNoteDraft("");
 
                       Alert.alert(
                         "Observação salva",
+
                         "Sua observação foi adicionada ao agendamento.",
                       );
 
@@ -1054,12 +1251,14 @@ export default function MyAppointmentsScreen() {
 
                       Alert.alert(
                         "Erro",
+
                         Array.isArray(message)
                           ? message.join("\n")
                           : String(message),
                       );
                     }
                   }}
+
                   style={styles.noteSaveButton}
                 >
                   {isSavingNotes ? (
@@ -1078,83 +1277,121 @@ export default function MyAppointmentsScreen() {
 }
 
 /*
+
  * ============================================================
+
  * STYLES
+
  * ============================================================
+
  */
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+
     backgroundColor: "#FCFAFD",
+
     paddingTop: 50,
   },
 
   header: {
     flexDirection: "row",
+
     alignItems: "center",
+
     gap: 16,
+
     paddingHorizontal: 24,
+
     marginBottom: 24,
   },
 
   backButton: {
     width: 42,
+
     height: 42,
+
     borderRadius: 21,
+
     backgroundColor: "#F5F5F5",
+
     alignItems: "center",
+
     justifyContent: "center",
   },
 
   backText: {
     fontSize: 24,
+
     color: "#111827",
   },
 
   title: {
     fontSize: 24,
+
     fontWeight: "800",
+
     color: "#111827",
   },
 
   subtitle: {
     marginTop: 4,
+
     fontSize: 14,
+
     color: "#6B7280",
   },
 
   content: {
     width: "100%",
+
     maxWidth: 900,
+
     alignSelf: "center",
+
     paddingHorizontal: 24,
+
     paddingBottom: 50,
   },
 
   sectionHeader: {
     flexDirection: "row",
+
     alignItems: "center",
+
     gap: 9,
+
     marginBottom: 14,
   },
 
   sectionTitle: {
     fontSize: 18,
+
     fontWeight: "800",
+
     color: "#111827",
   },
 
   countText: {
     minWidth: 24,
+
     paddingHorizontal: 7,
+
     paddingVertical: 3,
+
     borderRadius: 8,
+
     overflow: "hidden",
+
     textAlign: "center",
+
     backgroundColor: "#F9E8F1",
+
     color: "#B55A91",
+
     fontSize: 11,
+
     fontWeight: "800",
   },
 
@@ -1164,11 +1401,13 @@ const styles = StyleSheet.create({
 
   appointmentCard: {
     flexDirection: "row",
+
     alignItems: "center",
 
     backgroundColor: "#FFFFFF",
 
     borderWidth: 1,
+
     borderColor: "#EADDE5",
 
     borderRadius: 18,
@@ -1176,11 +1415,15 @@ const styles = StyleSheet.create({
     padding: 16,
 
     shadowColor: "#000",
+
     shadowOffset: {
       width: 0,
+
       height: 2,
     },
+
     shadowOpacity: 0.04,
+
     shadowRadius: 7,
 
     elevation: 2,
@@ -1188,6 +1431,7 @@ const styles = StyleSheet.create({
 
   dateBox: {
     width: 70,
+
     height: 78,
 
     borderRadius: 16,
@@ -1195,6 +1439,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F9E8F1",
 
     alignItems: "center",
+
     justifyContent: "center",
 
     marginRight: 15,
@@ -1202,84 +1447,115 @@ const styles = StyleSheet.create({
 
   dateDay: {
     fontSize: 24,
+
     fontWeight: "800",
+
     color: "#B55A91",
   },
 
   dateMonth: {
     marginTop: 2,
+
     fontSize: 11,
+
     fontWeight: "800",
+
     color: "#9E6C88",
   },
 
   appointmentContent: {
     flex: 1,
+
     minWidth: 0,
   },
 
   appointmentHeader: {
     flexDirection: "row",
+
     alignItems: "center",
+
     justifyContent: "space-between",
+
     gap: 10,
   },
 
   serviceName: {
     flex: 1,
+
     fontSize: 16,
+
     fontWeight: "800",
+
     color: "#111827",
   },
 
   price: {
     fontSize: 14,
+
     fontWeight: "800",
+
     color: "#111827",
   },
 
   professional: {
     marginTop: 3,
+
     fontSize: 13,
+
     color: "#6B7280",
   },
 
   infoRow: {
     flexDirection: "row",
+
     alignItems: "center",
+
     marginTop: 8,
   },
 
   infoIcon: {
     width: 22,
+
     fontSize: 16,
+
     color: "#B55A91",
   },
 
   infoText: {
     flex: 1,
+
     fontSize: 13,
+
     color: "#4B5563",
   },
 
   cardFooter: {
     flexDirection: "row",
+
     alignItems: "center",
+
     justifyContent: "space-between",
+
     gap: 10,
+
     marginTop: 11,
   },
 
   statusBadge: {
     paddingHorizontal: 9,
+
     paddingVertical: 5,
+
     borderRadius: 8,
+
     backgroundColor: "#EAF7EE",
   },
 
   statusText: {
     fontSize: 11,
+
     fontWeight: "800",
+
     color: "#3D9B5E",
   },
 
@@ -1293,86 +1569,123 @@ const styles = StyleSheet.create({
 
   dateFull: {
     flex: 1,
+
     textAlign: "right",
+
     fontSize: 11,
+
     color: "#9CA3AF",
+
     textTransform: "capitalize",
   },
 
   arrow: {
     marginLeft: 9,
+
     fontSize: 28,
+
     color: "#9CA3AF",
   },
 
   actionsContainer: {
     marginTop: 14,
+
     gap: 8,
   },
 
   confirmButton: {
     minHeight: 46,
+
     borderRadius: 13,
+
     backgroundColor: "#B55A91",
+
     alignItems: "center",
+
     justifyContent: "center",
+
     paddingHorizontal: 14,
   },
 
   confirmButtonText: {
     fontSize: 13,
+
     fontWeight: "800",
+
     color: "#FFFFFF",
   },
 
   secondaryActionButton: {
     minHeight: 44,
+
     borderRadius: 13,
+
     borderWidth: 1,
+
     borderColor: "#D9B5C8",
+
     backgroundColor: "#FFF9FC",
+
     alignItems: "center",
+
     justifyContent: "center",
+
     paddingHorizontal: 14,
   },
 
   secondaryActionText: {
     fontSize: 13,
+
     fontWeight: "800",
+
     color: "#9D4D7D",
   },
 
   noteButton: {
     minHeight: 42,
+
     borderRadius: 12,
+
     alignItems: "center",
+
     justifyContent: "center",
+
     paddingHorizontal: 14,
   },
 
   noteButtonText: {
     fontSize: 12,
+
     fontWeight: "700",
+
     color: "#6B7280",
   },
 
   notePreview: {
     marginTop: 12,
+
     padding: 11,
+
     borderRadius: 12,
+
     backgroundColor: "#F8F5F7",
   },
 
   notePreviewLabel: {
     fontSize: 11,
+
     fontWeight: "800",
+
     color: "#9D4D7D",
+
     marginBottom: 3,
   },
 
   notePreviewText: {
     fontSize: 12,
+
     lineHeight: 18,
+
     color: "#5F6368",
   },
 
@@ -1386,103 +1699,153 @@ const styles = StyleSheet.create({
 
   noteEditorOverlay: {
     position: "absolute",
+
     left: 0,
+
     right: 0,
+
     top: 0,
+
     bottom: 0,
+
     backgroundColor: "rgba(17, 24, 39, 0.45)",
+
     alignItems: "center",
+
     justifyContent: "center",
+
     padding: 20,
   },
 
   noteEditorCard: {
     width: "100%",
+
     maxWidth: 520,
+
     backgroundColor: "#FFFFFF",
+
     borderRadius: 20,
+
     padding: 20,
   },
 
   noteEditorTitle: {
     fontSize: 18,
+
     fontWeight: "800",
+
     color: "#111827",
   },
 
   noteEditorSubtitle: {
     marginTop: 7,
+
     fontSize: 13,
+
     lineHeight: 19,
+
     color: "#6B7280",
   },
 
   noteInput: {
     minHeight: 120,
+
     marginTop: 16,
+
     padding: 14,
+
     borderRadius: 14,
+
     borderWidth: 1,
+
     borderColor: "#E5D7DF",
+
     backgroundColor: "#FCFAFD",
+
     color: "#111827",
+
     fontSize: 14,
+
     lineHeight: 20,
+
     textAlignVertical: "top",
   },
 
   noteCounter: {
     marginTop: 5,
+
     textAlign: "right",
+
     fontSize: 11,
+
     color: "#9CA3AF",
   },
 
   noteEditorActions: {
     flexDirection: "row",
+
     justifyContent: "flex-end",
+
     gap: 10,
+
     marginTop: 16,
   },
 
   noteCancelButton: {
     minHeight: 44,
+
     paddingHorizontal: 16,
+
     borderRadius: 12,
+
     alignItems: "center",
+
     justifyContent: "center",
+
     backgroundColor: "#F3F4F6",
   },
 
   noteCancelText: {
     fontSize: 13,
+
     fontWeight: "800",
+
     color: "#4B5563",
   },
 
   noteSaveButton: {
     minHeight: 44,
+
     minWidth: 100,
+
     paddingHorizontal: 18,
+
     borderRadius: 12,
+
     alignItems: "center",
+
     justifyContent: "center",
+
     backgroundColor: "#B55A91",
   },
 
   noteSaveText: {
     fontSize: 13,
+
     fontWeight: "800",
+
     color: "#FFFFFF",
   },
 
   newAppointmentButton: {
     flexDirection: "row",
+
     alignItems: "center",
 
     backgroundColor: "#FFF7FB",
 
     borderWidth: 1,
+
     borderColor: "#E8C7D9",
 
     borderRadius: 16,
@@ -1490,23 +1853,33 @@ const styles = StyleSheet.create({
     padding: 14,
 
     marginTop: 6,
+
     marginBottom: 30,
   },
 
   newAppointmentIcon: {
     width: 44,
+
     height: 44,
+
     borderRadius: 13,
+
     backgroundColor: "#F9E8F1",
+
     alignItems: "center",
+
     justifyContent: "center",
+
     marginRight: 12,
   },
 
   newAppointmentPlus: {
     fontSize: 27,
+
     fontWeight: "400",
+
     color: "#B55A91",
+
     lineHeight: 30,
   },
 
@@ -1516,19 +1889,25 @@ const styles = StyleSheet.create({
 
   newAppointmentTitle: {
     fontSize: 14,
+
     fontWeight: "800",
+
     color: "#111827",
   },
 
   newAppointmentText: {
     marginTop: 3,
+
     fontSize: 12,
+
     color: "#6B7280",
   },
 
   newAppointmentArrow: {
     marginLeft: 10,
+
     fontSize: 25,
+
     color: "#B55A91",
   },
 
@@ -1538,7 +1917,9 @@ const styles = StyleSheet.create({
 
   loadingContainer: {
     minHeight: 300,
+
     alignItems: "center",
+
     justifyContent: "center",
   },
 
@@ -1548,24 +1929,35 @@ const styles = StyleSheet.create({
 
   loadingText: {
     marginTop: 12,
+
     fontSize: 14,
+
     color: "#6B7280",
   },
 
   emptyContainer: {
     minHeight: 430,
+
     alignItems: "center",
+
     justifyContent: "center",
+
     paddingHorizontal: 30,
   },
 
   emptyIconContainer: {
     width: 76,
+
     height: 76,
+
     borderRadius: 24,
+
     backgroundColor: "#F9E8F1",
+
     alignItems: "center",
+
     justifyContent: "center",
+
     marginBottom: 18,
   },
 
@@ -1575,38 +1967,55 @@ const styles = StyleSheet.create({
 
   emptyIcon: {
     fontSize: 38,
+
     marginBottom: 18,
   },
 
   emptyTitle: {
     fontSize: 20,
+
     fontWeight: "800",
+
     color: "#111827",
+
     textAlign: "center",
   },
 
   emptyText: {
     marginTop: 8,
+
     maxWidth: 420,
+
     fontSize: 14,
+
     lineHeight: 21,
+
     color: "#6B7280",
+
     textAlign: "center",
   },
 
   primaryButton: {
     marginTop: 24,
+
     minHeight: 52,
+
     paddingHorizontal: 24,
+
     borderRadius: 14,
+
     backgroundColor: "#111827",
+
     alignItems: "center",
+
     justifyContent: "center",
   },
 
   primaryButtonText: {
     fontSize: 15,
+
     fontWeight: "800",
+
     color: "#FFFFFF",
   },
 

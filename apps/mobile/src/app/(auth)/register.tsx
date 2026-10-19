@@ -419,7 +419,7 @@ export default function RegisterScreen() {
                         setTradeName(value);
                         clearError("tradeName");
                       }}
-                      placeholder="Nome do salão ou clínica"
+                      placeholder="Nome do  empreendimento"
                       placeholderTextColor="#9CA3AF"
                       autoCapitalize="words"
                       returnKeyType="next"

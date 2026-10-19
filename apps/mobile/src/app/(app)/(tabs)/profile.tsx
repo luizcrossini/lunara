@@ -1,6 +1,5 @@
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,13 +13,47 @@ import { router } from "expo-router";
 
 import { useAuth } from "@/core/auth/auth-context";
 
-import { useGetMyProfileQuery } from "@/features/profile/api/profileApi";
+import { baseApi } from "@/core/api/baseApi";
 
 import SafeScreen from "@/components/layout/SafeScreen";
 
-/* ============================================================
-   CORES
-============================================================ */
+type AuthProfile = {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  birthDate?: string | null;
+  gender?: string | null;
+  photoUrl?: string | null;
+  status?: string | null;
+  createdAt?: string;
+  customerId?: string | null;
+  observations?: string | null;
+  allergies?: string | null;
+  preferences?: string | null;
+  instagram?: string | null;
+};
+
+const profileApi = baseApi.injectEndpoints({
+  overrideExisting: true,
+
+  endpoints: (builder) => ({
+    getMyProfile: builder.query<AuthProfile, void>({
+      query: () => ({
+        url: "/auth/me",
+        method: "GET",
+      }),
+
+      transformResponse: (response: any) => {
+        return response?.data ?? response;
+      },
+
+      providesTags: ["Profile"],
+    }),
+  }),
+});
+
+const { useGetMyProfileQuery } = profileApi;
 
 const COLORS = {
   primary: "#B55A91",
@@ -46,10 +79,6 @@ const COLORS = {
   successLight: "#EAF8F0",
 };
 
-/* ============================================================
-   HELPERS
-============================================================ */
-
 function formatPhone(phone?: string | null) {
   if (!phone) {
     return "Não informado";
@@ -60,6 +89,7 @@ function formatPhone(phone?: string | null) {
   if (numbers.length === 11) {
     return `(${numbers.slice(0, 2)}) ${numbers.slice(
       2,
+
       7,
     )}-${numbers.slice(7)}`;
   }
@@ -67,6 +97,7 @@ function formatPhone(phone?: string | null) {
   if (numbers.length === 10) {
     return `(${numbers.slice(0, 2)}) ${numbers.slice(
       2,
+
       6,
     )}-${numbers.slice(6)}`;
   }
@@ -79,12 +110,19 @@ function formatBirthDate(date?: string | null) {
     return "Não informado";
   }
 
-  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  // API: YYYY-MM-DD or ISO timestamp
+  const isoMatch = String(date).match(/^(\d{4})-(\d{2})-(\d{2})/);
 
-  if (match) {
-    const [, year, month, day] = match;
-
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
     return `${day}/${month}/${year}`;
+  }
+
+  // Already formatted: DD/MM/YYYY
+  const brMatch = String(date).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+
+  if (brMatch) {
+    return String(date);
   }
 
   const parsed = new Date(date);
@@ -93,9 +131,11 @@ function formatBirthDate(date?: string | null) {
     return "Não informado";
   }
 
-  return parsed.toLocaleDateString("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-  });
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const year = parsed.getFullYear();
+
+  return `${day}/${month}/${year}`;
 }
 
 function formatGender(gender?: string | null) {
@@ -117,10 +157,6 @@ function formatGender(gender?: string | null) {
   }
 }
 
-/* ============================================================
-   SCREEN
-============================================================ */
-
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
 
@@ -136,21 +172,13 @@ export default function ProfileScreen() {
 
   const {
     data: profile,
-
     isLoading,
-
     isFetching,
-
     isError,
-
     refetch,
-  } = useGetMyProfileQuery(user?.email ?? "", {
-    skip: !user?.email,
+  } = useGetMyProfileQuery(undefined, {
+    skip: !user,
   });
-
-  /* ============================================================
-     LOADING
-  ============================================================ */
 
   if (isLoading) {
     return (
@@ -163,10 +191,6 @@ export default function ProfileScreen() {
       </SafeScreen>
     );
   }
-
-  /* ============================================================
-     ERROR
-  ============================================================ */
 
   if (isError) {
     return (
@@ -196,34 +220,30 @@ export default function ProfileScreen() {
     );
   }
 
-  /* ============================================================
-     DADOS
-  ============================================================ */
+  const name = profile?.name ?? user?.name ?? "Usuário";
 
-  const profileUser = profile?.user;
+  const email = profile?.email ?? user?.email ?? "";
 
-  const name = profileUser?.name ?? user?.name ?? "Usuário";
+  const phone = profile?.phone ?? user?.phone ?? null;
 
-  const email = profileUser?.email ?? user?.email ?? "";
+  const birthDate = profile?.birthDate ?? null;
 
-  const phone = profileUser?.phone;
-
-  const birthDate = profileUser?.birthDate;
-
-  const gender = profileUser?.gender;
+  const gender = profile?.gender ?? null;
 
   const initials =
     name
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((item) => item.charAt(0))
-      .join("")
-      .toUpperCase() || "U";
 
-  /* ============================================================
-     RENDER
-  ============================================================ */
+      .split(" ")
+
+      .filter(Boolean)
+
+      .slice(0, 2)
+
+      .map((item) => item.charAt(0))
+
+      .join("")
+
+      .toUpperCase() || "U";
 
   return (
     <SafeScreen style={styles.screen}>
@@ -232,10 +252,6 @@ export default function ProfileScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.container}>
-          {/* ==================================================
-              HEADER
-          ================================================== */}
-
           <View style={styles.header}>
             <Pressable onPress={() => router.back()} style={styles.backButton}>
               <Ionicons name="arrow-back" size={21} color={COLORS.text} />
@@ -251,6 +267,7 @@ export default function ProfileScreen() {
               onPress={() => router.push("/editProfile")}
               style={({ pressed }) => [
                 styles.editHeaderButton,
+
                 pressed && styles.buttonPressed,
               ]}
             >
@@ -264,10 +281,6 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
-          {/* ==================================================
-              PROFILE CARD
-          ================================================== */}
-
           <View style={styles.profileCard}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{initials}</Text>
@@ -279,10 +292,6 @@ export default function ProfileScreen() {
               <Text style={styles.profileEmail}>{email}</Text>
             </View>
           </View>
-
-          {/* ==================================================
-              DADOS PESSOAIS
-          ================================================== */}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Dados pessoais</Text>
@@ -308,14 +317,10 @@ export default function ProfileScreen() {
                 icon="people-outline"
                 label="Gênero"
                 value={formatGender(gender)}
-                last
+                last={true}
               />
             </View>
           </View>
-
-          {/* ==================================================
-              PREFERÊNCIAS
-          ================================================== */}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Preferências</Text>
@@ -337,14 +342,10 @@ export default function ProfileScreen() {
                 icon="logo-instagram"
                 label="Instagram"
                 value={profile?.instagram ?? "Não informado"}
-                last
+                last={true}
               />
             </View>
           </View>
-
-          {/* ==================================================
-              OBSERVAÇÕES
-          ================================================== */}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Observações</Text>
@@ -375,6 +376,7 @@ export default function ProfileScreen() {
             onPress={handleLogout}
             style={({ pressed }) => [
               styles.logoutButton,
+
               pressed && styles.pressed,
             ]}
           >
@@ -382,10 +384,6 @@ export default function ProfileScreen() {
 
             <Text style={styles.logoutText}>Sair da conta</Text>
           </Pressable>
-
-          {/* ==================================================
-              ATUALIZAÇÃO
-          ================================================== */}
 
           {isFetching && (
             <View style={styles.refreshing}>
@@ -400,14 +398,13 @@ export default function ProfileScreen() {
   );
 }
 
-/* ============================================================
-   INFO ROW
-============================================================ */
-
 function InfoRow({
   icon,
+
   label,
+
   value,
+
   last = false,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
@@ -433,96 +430,132 @@ function InfoRow({
   );
 }
 
-/* ============================================================
-   STYLES
-============================================================ */
-
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+
     backgroundColor: COLORS.background,
   },
 
   scrollContent: {
     flexGrow: 1,
+
     paddingBottom: 50,
   },
 
   container: {
     width: "100%",
+
     maxWidth: 760,
+
     alignSelf: "center",
+
     paddingHorizontal: 22,
+
     paddingTop: 26,
   },
 
   center: {
     flex: 1,
+
     backgroundColor: COLORS.background,
+
     alignItems: "center",
+
     justifyContent: "center",
+
     paddingHorizontal: 30,
   },
 
   loadingText: {
     marginTop: 14,
+
     fontSize: 14,
+
     color: COLORS.textSecondary,
   },
 
   errorIcon: {
     width: 70,
+
     height: 70,
+
     borderRadius: 22,
+
     backgroundColor: COLORS.primaryLight,
+
     alignItems: "center",
+
     justifyContent: "center",
+
     marginBottom: 18,
   },
 
   errorTitle: {
     fontSize: 18,
+
     fontWeight: "700",
+
     color: COLORS.text,
+
     textAlign: "center",
+
     marginBottom: 8,
   },
 
   errorText: {
     fontSize: 14,
+
     color: COLORS.textSecondary,
+
     textAlign: "center",
   },
 
   retryButton: {
     marginTop: 22,
+
     backgroundColor: COLORS.primary,
+
     borderRadius: 14,
+
     paddingHorizontal: 24,
+
     paddingVertical: 13,
   },
 
   retryText: {
     color: COLORS.white,
+
     fontSize: 14,
+
     fontWeight: "700",
   },
 
   header: {
     flexDirection: "row",
+
     alignItems: "center",
+
     marginBottom: 26,
+
     gap: 12,
   },
 
   backButton: {
     width: 42,
+
     height: 42,
+
     borderRadius: 14,
+
     backgroundColor: COLORS.white,
+
     borderWidth: 1,
+
     borderColor: COLORS.border,
+
     alignItems: "center",
+
     justifyContent: "center",
   },
 
@@ -532,56 +565,83 @@ const styles = StyleSheet.create({
 
   title: {
     fontSize: 25,
+
     fontWeight: "800",
+
     color: COLORS.text,
   },
 
   subtitle: {
     marginTop: 4,
+
     fontSize: 13,
+
     color: COLORS.textSecondary,
   },
 
   editHeaderButton: {
     flexDirection: "row",
+
     alignItems: "center",
+
     gap: 6,
+
     paddingHorizontal: 13,
+
     paddingVertical: 10,
+
     borderRadius: 12,
+
     backgroundColor: COLORS.primaryLight,
   },
 
   editHeaderText: {
     fontSize: 13,
+
     fontWeight: "700",
+
     color: COLORS.primary,
   },
 
   profileCard: {
     flexDirection: "row",
+
     alignItems: "center",
+
     backgroundColor: COLORS.white,
+
     borderWidth: 1,
+
     borderColor: COLORS.border,
+
     borderRadius: 22,
+
     padding: 20,
+
     marginBottom: 28,
   },
 
   avatar: {
     width: 72,
+
     height: 72,
+
     borderRadius: 24,
+
     backgroundColor: COLORS.primaryLight,
+
     alignItems: "center",
+
     justifyContent: "center",
+
     marginRight: 16,
   },
 
   avatarText: {
     fontSize: 23,
+
     fontWeight: "800",
+
     color: COLORS.primary,
   },
 
@@ -591,26 +651,35 @@ const styles = StyleSheet.create({
 
   profileName: {
     fontSize: 19,
+
     fontWeight: "800",
+
     color: COLORS.text,
   },
 
   profileEmail: {
     marginTop: 4,
+
     fontSize: 13,
+
     color: COLORS.textSecondary,
   },
 
   verifiedContainer: {
     flexDirection: "row",
+
     alignItems: "center",
+
     gap: 5,
+
     marginTop: 9,
   },
 
   verifiedText: {
     fontSize: 11,
+
     fontWeight: "600",
+
     color: COLORS.primary,
   },
 
@@ -624,38 +693,55 @@ const styles = StyleSheet.create({
 
   sectionTitle: {
     fontSize: 17,
+
     fontWeight: "800",
+
     color: COLORS.text,
+
     marginBottom: 11,
   },
 
   card: {
     backgroundColor: COLORS.white,
+
     borderRadius: 20,
+
     borderWidth: 1,
+
     borderColor: COLORS.border,
+
     overflow: "hidden",
   },
 
   infoRow: {
     flexDirection: "row",
+
     alignItems: "center",
+
     minHeight: 74,
+
     paddingHorizontal: 16,
   },
 
   infoRowBorder: {
     borderBottomWidth: 1,
+
     borderBottomColor: COLORS.border,
   },
 
   infoIcon: {
     width: 40,
+
     height: 40,
+
     borderRadius: 13,
+
     backgroundColor: COLORS.primaryLight,
+
     alignItems: "center",
+
     justifyContent: "center",
+
     marginRight: 13,
   },
 
@@ -665,32 +751,47 @@ const styles = StyleSheet.create({
 
   infoLabel: {
     fontSize: 11,
+
     color: COLORS.textMuted,
+
     marginBottom: 3,
   },
 
   infoValue: {
     fontSize: 14,
+
     fontWeight: "600",
+
     color: COLORS.text,
   },
 
   notesCard: {
     flexDirection: "row",
+
     backgroundColor: COLORS.white,
+
     borderRadius: 20,
+
     borderWidth: 1,
+
     borderColor: COLORS.border,
+
     padding: 17,
   },
 
   notesIcon: {
     width: 45,
+
     height: 45,
+
     borderRadius: 14,
+
     backgroundColor: COLORS.primaryLight,
+
     alignItems: "center",
+
     justifyContent: "center",
+
     marginRight: 13,
   },
 
@@ -700,52 +801,79 @@ const styles = StyleSheet.create({
 
   notesTitle: {
     fontSize: 13,
+
     fontWeight: "700",
+
     color: COLORS.text,
+
     marginBottom: 5,
   },
 
   notesText: {
     fontSize: 13,
+
     lineHeight: 20,
+
     color: COLORS.textSecondary,
   },
 
   editButton: {
     height: 52,
+
     borderRadius: 16,
+
     backgroundColor: COLORS.primary,
+
     alignItems: "center",
+
     justifyContent: "center",
+
     flexDirection: "row",
+
     gap: 8,
+
     marginTop: 4,
   },
 
   editButtonText: {
     color: COLORS.white,
+
     fontSize: 14,
+
     fontWeight: "800",
   },
 
   logoutButton: {
     height: 50,
+
     width: "100%",
+
     borderRadius: 16,
+
     borderWidth: 1,
+
     borderColor: COLORS.border,
+
     backgroundColor: COLORS.primary,
+
     flexDirection: "row",
+
     alignItems: "center",
+
     justifyContent: "center",
+
     gap: 9,
+
     marginTop: 4,
+
     marginBottom: 10,
   },
 
   logoutText: {
     color: COLORS.white,
+
     fontSize: 14,
+
     fontWeight: "800",
   },
 
@@ -755,14 +883,19 @@ const styles = StyleSheet.create({
 
   refreshing: {
     flexDirection: "row",
+
     alignItems: "center",
+
     justifyContent: "center",
+
     gap: 8,
+
     marginTop: 15,
   },
 
   refreshingText: {
     fontSize: 12,
+
     color: COLORS.textMuted,
   },
 });

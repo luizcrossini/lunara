@@ -8,13 +8,52 @@ export type ProfessionalUser = {
   photoUrl: string | null;
 };
 
+export type ProfessionalServiceBranch = {
+  id: string;
+  serviceId: string;
+  branchId: string;
+  price?: number | string | null;
+  active?: boolean;
+  service?: {
+    id: string;
+    name: string;
+    durationMinutes?: number;
+    active?: boolean;
+  };
+};
+
+export type ProfessionalService = {
+  id: string;
+  professionalId?: string;
+
+  /**
+   * Compatibilidade com respostas antigas da API.
+   * O modelo atual usa serviceBranch.
+   */
+  serviceId?: string;
+
+  /**
+   * Modelo atual:
+   * ProfessionalService -> ServiceBranch -> Service
+   */
+  serviceBranchId?: string;
+
+  serviceBranch?: ProfessionalServiceBranch;
+
+  price?: number | string | null;
+  active?: boolean;
+  deletedAt?: string | null;
+};
+
 export type Professional = {
   id: string;
   userId: string;
+
   bio: string | null;
   specialties: string | null;
   instagram: string | null;
   website: string | null;
+
   active: boolean;
 
   user: ProfessionalUser;
@@ -26,21 +65,18 @@ export type ProfessionalBranch = {
   id: string;
   professionalId: string;
   branchId: string;
+
   color: string | null;
   commissionPercentage: string | null;
+
   active: boolean;
 
   professional: Professional;
 };
 
-export type ProfessionalService = {
-  id: string;
-  serviceId: string;
-};
-
 type ProfessionalsResponse = {
   success: boolean;
-  timestamp: string;
+  timestamp?: string;
 
   data: {
     items: ProfessionalBranch[];
@@ -74,8 +110,10 @@ export const professionalApi = baseApi.injectEndpoints({
         },
       }),
 
-      transformResponse: (response: ProfessionalsResponse) => {
-        return response.data.items;
+      transformResponse: (
+        response: ProfessionalsResponse,
+      ): ProfessionalBranch[] => {
+        return response?.data?.items ?? [];
       },
 
       transformErrorResponse: (response) => {

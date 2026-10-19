@@ -1,5 +1,6 @@
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -44,13 +45,32 @@ export default function BookingProfessionalScreen() {
     rescheduleAppointmentId?: string;
     rescheduleProfessionalServiceId?: string;
   }>();
-
+  console.log("========== PROFESSIONAL PARAMS ==========");
+  console.log("companyId:", companyId);
+  console.log("branchId:", branchId);
+  console.log("serviceIds:", serviceIds);
+  console.log("serviceNames:", serviceNames);
+  console.log("=========================================");
   const isRescheduling = Boolean(rescheduleAppointmentId);
-  const serviceIdsArray = serviceIds
-    ? String(serviceIds).split(",").filter(Boolean)
-    : [];
+
+  /*
+   * ============================================================
+   * SERVIÇOS SELECIONADOS
+   * ============================================================
+   */
+
+  const serviceIdsArray = String(serviceIds ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
 
   const firstServiceId = serviceIdsArray[0];
+
+  /*
+   * ============================================================
+   * PROFISSIONAIS
+   * ============================================================
+   */
 
   const {
     data: professionals = [],
@@ -59,59 +79,192 @@ export default function BookingProfessionalScreen() {
     refetch,
   } = useGetPublicProfessionalsQuery(
     {
-      companyId: String(companyId),
-      branchId: String(branchId),
-      serviceId: firstServiceId,
+      companyId: String(companyId ?? ""),
+      branchId: String(branchId ?? ""),
+      serviceId: String(firstServiceId ?? ""),
     },
     {
       skip: !companyId || !branchId || !firstServiceId,
     },
   );
 
+  /*
+   * ============================================================
+   * ENCONTRA OS PROFESSIONAL SERVICES
+   * ============================================================
+   *
+   * Modelo atual:
+   *
+   * ProfessionalService
+   *      ↓
+   * serviceBranch
+   *      ↓
+   * serviceId
+   *
+   * NÃO devemos mais usar somente:
+   *
+   * professionalService.serviceId
+   *
+   * ============================================================
+   */
+
+  function getProfessionalServiceIds(
+    professionalBranch: (typeof professionals)[number],
+  ): string[] {
+    const professional = professionalBranch.professional;
+
+    if (!professional?.professionalServices?.length) {
+      return [];
+    }
+
+    const selectedServiceIds = serviceIdsArray;
+
+    const professionalServiceIds = professional.professionalServices
+      .filter((professionalService) => {
+        /*
+         * --------------------------------------------------------
+         * FILIAL
+         * --------------------------------------------------------
+         *
+         * O ProfessionalService está ligado a uma ServiceBranch.
+         * Precisamos garantir que o vínculo pertence à filial
+         * atualmente selecionada.
+         */
+
+        const serviceBranch = professionalService.serviceBranch;
+
+        if (serviceBranch) {
+          if (
+            serviceBranch.branchId &&
+            String(serviceBranch.branchId) !== String(branchId)
+          ) {
+            return false;
+          }
+        }
+
+        /*
+         * --------------------------------------------------------
+         * SERVIÇO
+         * --------------------------------------------------------
+         */
+
+        const linkedServiceId =
+          professionalService.serviceBranch?.serviceId ??
+          professionalService.serviceId;
+
+        if (!linkedServiceId) {
+          return false;
+        }
+
+        return selectedServiceIds.includes(String(linkedServiceId));
+      })
+      .map((professionalService) => professionalService.id)
+      .filter(Boolean);
+
+    return professionalServiceIds;
+  }
+
+  /*
+   * ============================================================
+   * SELECIONAR PROFISSIONAL
+   * ============================================================
+   */
+
   function handleSelectProfessional(
     professionalBranch: (typeof professionals)[number],
   ) {
     const professional = professionalBranch.professional;
 
-    /*
-  ========================================
-  BUSCA O PROFESSIONAL SERVICE
-  ========================================
-  */
-
-    const selectedServiceIds = String(serviceIds ?? "")
-      .split(",")
-      .map((id) => id.trim())
-      .filter(Boolean);
-
-    const professionalServiceIds =
-      professional.professionalServices
-        ?.filter((professionalService) =>
-          selectedServiceIds.includes(professionalService.serviceId),
-        )
-        .map((professionalService) => professionalService.id) ?? [];
-
-    /*
-  ========================================
-  VALIDA
-  ========================================
-  */
-
-    if (professionalServiceIds.length === 0) {
+    if (!professional) {
       Alert.alert(
         "Erro",
-        "Não foi possível identificar o serviço deste profissional.",
+        "Não foi possível identificar o profissional selecionado.",
       );
 
       return;
     }
 
     /*
-  ========================================
-  NAVEGA
-  ========================================
-  */
+     * ----------------------------------------------------------
+     * VALIDA PROFISSIONAL
+     * ----------------------------------------------------------
+     */
 
+    if (!professional.id) {
+      Alert.alert(
+        "Erro",
+        "O profissional selecionado não possui um identificador válido.",
+      );
+
+      return;
+    }
+
+    /*
+     * ----------------------------------------------------------
+     * VALIDA FILIAL
+     * ----------------------------------------------------------
+     */
+
+    if (!professionalBranch.branchId) {
+      Alert.alert(
+        "Erro",
+        "Não foi possível identificar a filial deste profissional.",
+      );
+
+      return;
+    }
+
+    if (branchId && String(professionalBranch.branchId) !== String(branchId)) {
+      Alert.alert(
+        "Erro",
+        "O profissional selecionado não pertence à filial escolhida.",
+      );
+
+      return;
+    }
+
+    /*
+     * ----------------------------------------------------------
+     * BUSCA OS PROFESSIONAL SERVICES
+     * ----------------------------------------------------------
+     */
+
+    const professionalServiceIds =
+      getProfessionalServiceIds(professionalBranch);
+
+    /*
+     * ----------------------------------------------------------
+     * VALIDA SERVIÇO
+     * ----------------------------------------------------------
+     */
+
+    if (professionalServiceIds.length === 0) {
+      Alert.alert(
+        "Serviço não disponível",
+        "Não foi possível identificar o serviço deste profissional nesta filial. Verifique se o serviço está vinculado ao profissional.",
+      );
+
+      return;
+    }
+
+    /*
+     * ----------------------------------------------------------
+     * REAGENDAMENTO
+     * ----------------------------------------------------------
+     */
+
+    const selectedProfessionalServiceId =
+      rescheduleProfessionalServiceId &&
+      professionalServiceIds.includes(String(rescheduleProfessionalServiceId))
+        ? String(rescheduleProfessionalServiceId)
+        : professionalServiceIds[0];
+
+    /*
+     * ----------------------------------------------------------
+     * NAVEGA PARA DATA/HORÁRIO
+     * ----------------------------------------------------------
+     */
+   
     router.push({
       pathname: "/booking/date-time",
 
@@ -128,24 +281,41 @@ export default function BookingProfessionalScreen() {
         professionalBranchId: String(professionalBranch.id),
 
         professionalId: String(professional.id),
-        professionalName: String(professional.user.name),
+        professionalName: String(professional.user?.name ?? ""),
 
         professionalServiceIds: professionalServiceIds.join(","),
 
+        /*
+         * Mantém o primeiro ProfessionalService disponível
+         * para o fluxo de agendamento.
+         */
+        professionalServiceId: String(selectedProfessionalServiceId ?? ""),
+
+        ...(customerId
+          ? {
+              customerId: String(customerId),
+            }
+          : {}),
+
         ...(isRescheduling
           ? {
-              rescheduleAppointmentId: String(rescheduleAppointmentId),
+              rescheduleAppointmentId: String(rescheduleAppointmentId ?? ""),
 
               rescheduleProfessionalServiceId: String(
-                rescheduleProfessionalServiceId ??
-                  professionalServiceIds[0] ??
-                  "",
+                selectedProfessionalServiceId ?? "",
               ),
             }
           : {}),
       },
     });
   }
+
+  /*
+   * ============================================================
+   * INICIAIS
+   * ============================================================
+   */
+
   function getInitials(name: string) {
     return name
       .split(" ")
@@ -154,6 +324,12 @@ export default function BookingProfessionalScreen() {
       .map((word) => word.charAt(0).toUpperCase())
       .join("");
   }
+
+  /*
+   * ============================================================
+   * RENDER
+   * ============================================================
+   */
 
   return (
     <View style={styles.container}>
@@ -191,7 +367,10 @@ export default function BookingProfessionalScreen() {
 
             <Text style={styles.subtitle}>
               Selecione quem realizará seu atendimento de{" "}
-              <Text style={styles.highlight}>{serviceNames}</Text>.
+              <Text style={styles.highlight}>
+                {serviceNames || "seu serviço"}
+              </Text>
+              .
             </Text>
 
             {isRescheduling && (
@@ -237,7 +416,7 @@ export default function BookingProfessionalScreen() {
                 Verifique sua conexão e tente novamente.
               </Text>
 
-              <Pressable onPress={refetch} style={styles.retryButton}>
+              <Pressable onPress={() => refetch()} style={styles.retryButton}>
                 <Text style={styles.retryButtonText}>Tentar novamente</Text>
               </Pressable>
             </View>
@@ -250,7 +429,11 @@ export default function BookingProfessionalScreen() {
             professionals.map((professionalBranch) => {
               const professional = professionalBranch.professional;
 
-              const user = professional.user;
+              const user = professional?.user;
+
+              if (!professional || !user) {
+                return null;
+              }
 
               return (
                 <Pressable
@@ -289,7 +472,9 @@ export default function BookingProfessionalScreen() {
                   {/* CONTENT */}
 
                   <View style={styles.professionalContent}>
-                    <Text style={styles.professionalName}>{user.name}</Text>
+                    <Text style={styles.professionalName} numberOfLines={1}>
+                      {user.name}
+                    </Text>
 
                     {professional.specialties && (
                       <Text style={styles.specialties} numberOfLines={2}>
@@ -354,7 +539,9 @@ const styles = StyleSheet.create({
     paddingTop: 24,
   },
 
-  /* BACK */
+  /*
+   * BACK
+   */
 
   backButton: {
     flexDirection: "row",
@@ -374,7 +561,9 @@ const styles = StyleSheet.create({
     color: "#463B48",
   },
 
-  /* HEADER */
+  /*
+   * HEADER
+   */
 
   header: {
     alignItems: "center",
@@ -439,22 +628,19 @@ const styles = StyleSheet.create({
     color: "#9D4D7D",
   },
 
-  /* PROFESSIONALS */
+  /*
+   * PROFESSIONALS
+   */
 
   professionalCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 16,
-
     backgroundColor: "#FFFFFF",
-
     borderRadius: 20,
-
     borderWidth: 1,
     borderColor: "#E8DDE7",
-
     padding: 18,
-
     marginBottom: 14,
 
     shadowColor: "#000000",
@@ -486,7 +672,6 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     borderRadius: 18,
-
     alignItems: "center",
     justifyContent: "center",
   },
@@ -521,7 +706,9 @@ const styles = StyleSheet.create({
     color: "#7B7280",
   },
 
-  /* STATES */
+  /*
+   * STATES
+   */
 
   centerState: {
     alignItems: "center",

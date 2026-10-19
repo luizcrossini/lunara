@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator } from "react-native";
 import {
+  ActivityIndicator,
   Image,
   Platform,
   Pressable,
@@ -11,17 +11,15 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useGetCompaniesQuery } from "@/features/company/api/companyApi";
 
 export default function BookingScreen() {
   const { width } = useWindowDimensions();
-
   const isDesktop = Platform.OS === "web" && width >= 900;
-
   const [search, setSearch] = useState("");
+
   const {
     data: companies = [],
     isLoading,
@@ -38,20 +36,13 @@ export default function BookingScreen() {
 
     return companies.filter((company) => {
       return (
-        company.name.toLowerCase().includes(term) ||
+        (company.tradeName ?? "").toLowerCase().includes(term) ||
         company.slug.toLowerCase().includes(term)
       );
     });
   }, [companies, search]);
 
   function handleSelectCompany(company: { id: string; slug: string }) {
-    /*
-      Próxima etapa:
-
-      Vamos passar o ID do estabelecimento
-      para a próxima tela.
-    */
-
     router.push({
       pathname: "/booking/branch",
       params: {
@@ -68,10 +59,7 @@ export default function BookingScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={[styles.content, isDesktop && styles.contentDesktop]}>
-          {/* =====================
-              BACK BUTTON
-          ===================== */}
-
+          {/* BACK BUTTON */}
           <Pressable
             onPress={() => router.back()}
             style={({ pressed }) => [
@@ -80,14 +68,10 @@ export default function BookingScreen() {
             ]}
           >
             <Ionicons name="arrow-back" size={22} color="#463B48" />
-
             <Text style={styles.backButtonText}>Voltar</Text>
           </Pressable>
 
-          {/* =====================
-              HEADER
-          ===================== */}
-
+          {/* HEADER */}
           <View style={styles.header}>
             <View style={styles.iconContainer}>
               <Ionicons name="storefront-outline" size={28} color="#B55A91" />
@@ -101,17 +85,14 @@ export default function BookingScreen() {
             </Text>
           </View>
 
-          {/* =====================
-              SEARCH
-          ===================== */}
-
+          {/* SEARCH */}
           <View style={styles.searchContainer}>
             <Ionicons name="search-outline" size={21} color="#9B8F99" />
 
             <TextInput
               value={search}
               onChangeText={setSearch}
-              placeholder="Buscar salão ou clínica"
+              placeholder="Buscar Empreendimento"
               placeholderTextColor="#9B8F99"
               style={styles.searchInput}
               autoCapitalize="none"
@@ -125,17 +106,13 @@ export default function BookingScreen() {
             )}
           </View>
 
-          {/* =====================
-    RESULTS
-===================== */}
-
+          {/* RESULTS */}
           <View
             style={[styles.resultsGrid, isDesktop && styles.resultsGridDesktop]}
           >
             {isLoading && (
               <View style={styles.centerState}>
                 <ActivityIndicator size="large" color="#B55A91" />
-
                 <Text style={styles.loadingText}>
                   Carregando estabelecimentos...
                 </Text>
@@ -178,22 +155,29 @@ export default function BookingScreen() {
                     pressed && styles.cardPressed,
                   ]}
                 >
-                  <View style={styles.companyPlaceholder}>
-                    <Ionicons
-                      name="storefront-outline"
-                      size={48}
-                      color="#B55A91"
+                  {company.logoUrl ? (
+                    <Image
+                      source={{ uri: company.logoUrl }}
+                      style={styles.cardImage}
+                      resizeMode="cover"
+                      accessibilityLabel={`Logo de ${company.name}`}
                     />
-                  </View>
+                  ) : (
+                    <View style={styles.companyPlaceholder}>
+                      <Ionicons
+                        name="storefront-outline"
+                        size={48}
+                        color="#B55A91"
+                      />
+                    </View>
+                  )}
 
                   <View style={styles.cardContent}>
                     <View style={styles.cardHeader}>
                       <View style={styles.cardTitleContainer}>
                         <Text style={styles.cardTitle} numberOfLines={1}>
-                          {company.slug}
+                          {company.tradeName}
                         </Text>
-
-                        <Text style={styles.cardCategory}>@{company.slug}</Text>
                       </View>
                     </View>
 
@@ -213,10 +197,7 @@ export default function BookingScreen() {
               ))}
           </View>
 
-          {/* =====================
-              EMPTY STATE
-          ===================== */}
-
+          {/* EMPTY STATE */}
           {!isLoading && !isError && filteredCompanies.length === 0 && (
             <View style={styles.emptyState}>
               <View style={styles.emptyIcon}>
@@ -241,27 +222,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#FCFAFD",
   },
-
   scrollContent: {
     flexGrow: 1,
     paddingBottom: 40,
   },
-
   content: {
     width: "100%",
     paddingHorizontal: 20,
     paddingTop: 24,
   },
-
   contentDesktop: {
     maxWidth: 1100,
     alignSelf: "center",
     paddingHorizontal: 32,
     paddingTop: 40,
   },
-
-  /* BACK */
-
   backButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -269,24 +244,18 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 28,
   },
-
   backButtonPressed: {
     opacity: 0.65,
   },
-
   backButtonText: {
     fontSize: 14,
     fontWeight: "600",
     color: "#463B48",
   },
-
-  /* HEADER */
-
   header: {
     alignItems: "center",
     marginBottom: 32,
   },
-
   iconContainer: {
     width: 62,
     height: 62,
@@ -296,7 +265,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 16,
   },
-
   title: {
     fontSize: 28,
     fontWeight: "700",
@@ -304,7 +272,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 10,
   },
-
   subtitle: {
     maxWidth: 500,
     fontSize: 14,
@@ -312,9 +279,6 @@ const styles = StyleSheet.create({
     color: "#7B7280",
     textAlign: "center",
   },
-
-  /* SEARCH */
-
   searchContainer: {
     height: 56,
     flexDirection: "row",
@@ -327,25 +291,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     marginBottom: 28,
   },
-
   searchInput: {
     flex: 1,
     fontSize: 15,
     color: "#2E2430",
-
     ...(Platform.OS === "web"
       ? {
           outlineStyle: "none" as any,
         }
       : {}),
   },
-
-  /* RESULTS */
-
   resultsGrid: {
     gap: 16,
   },
-
   resultsGridDesktop: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -357,13 +315,11 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
     paddingHorizontal: 30,
   },
-
   loadingText: {
     marginTop: 16,
     fontSize: 14,
     color: "#7B7280",
   },
-
   companyPlaceholder: {
     width: "100%",
     height: 170,
@@ -371,7 +327,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   retryButton: {
     marginTop: 20,
     paddingHorizontal: 20,
@@ -379,7 +334,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: "#B55A91",
   },
-
   retryButtonText: {
     fontSize: 13,
     fontWeight: "700",
@@ -391,7 +345,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E8DDE7",
     overflow: "hidden",
-
     shadowColor: "#000000",
     shadowOffset: {
       width: 0,
@@ -401,11 +354,9 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 2,
   },
-
   cardDesktop: {
     width: "31.8%",
   },
-
   cardPressed: {
     opacity: 0.85,
     transform: [
@@ -414,64 +365,53 @@ const styles = StyleSheet.create({
       },
     ],
   },
-
   cardImage: {
     width: "100%",
     height: 170,
     backgroundColor: "#F4E8F0",
   },
-
   cardContent: {
     padding: 18,
   },
-
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 10,
     marginBottom: 12,
   },
-
   cardTitleContainer: {
     flex: 1,
   },
-
   cardTitle: {
     fontSize: 16,
     fontWeight: "700",
     color: "#2E2430",
     marginBottom: 4,
   },
-
   cardCategory: {
     fontSize: 12,
     color: "#7B7280",
   },
-
   ratingContainer: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
   },
-
   ratingText: {
     fontSize: 12,
     fontWeight: "700",
     color: "#463B48",
   },
-
   locationContainer: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     marginBottom: 16,
   },
-
   locationText: {
     fontSize: 12,
     color: "#7B7280",
   },
-
   cardFooter: {
     flexDirection: "row",
     alignItems: "center",
@@ -480,21 +420,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#F2EDF1",
   },
-
   scheduleText: {
     fontSize: 12,
     fontWeight: "700",
     color: "#B55A91",
   },
-
-  /* EMPTY */
-
   emptyState: {
     alignItems: "center",
     paddingVertical: 60,
     paddingHorizontal: 30,
   },
-
   emptyIcon: {
     width: 70,
     height: 70,
@@ -504,7 +439,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 18,
   },
-
   emptyTitle: {
     fontSize: 17,
     fontWeight: "700",
@@ -512,7 +446,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 8,
   },
-
   emptyText: {
     fontSize: 13,
     color: "#7B7280",

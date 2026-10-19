@@ -143,19 +143,41 @@ export default function BookingConfirmationScreen() {
       },
     );
 
-  const selectedProfessional = (professionals as any[]).find(
+  const selectedProfessionalBranch = (professionals as any[]).find(
     (professionalBranch) =>
-      professionalBranch?.professional?.id === String(professionalId),
-  )?.professional as any;
+      String(
+        professionalBranch?.professional?.id ??
+          professionalBranch?.professionalId ??
+          "",
+      ) === String(professionalId),
+  ) as any;
 
-  const professionalServices = selectedProfessional?.professionalServices ?? [];
+  const selectedProfessional = selectedProfessionalBranch?.professional as any;
+
+  // A API pode retornar os serviços dentro de professional ou no vínculo da filial.
+  const professionalServices =
+    selectedProfessional?.professionalServices ??
+    selectedProfessionalBranch?.professionalServices ??
+    [];
 
   const serviceItems = services.map((service, index) => {
     const serviceId = parsedServiceIds[index];
+    const professionalServiceId = parsedProfessionalServiceIds[index];
 
-    const professionalService = professionalServices.find(
-      (item) => item.serviceId === serviceId,
-    );
+    // Prioriza o ID exato do vínculo profissional-serviço, que é o identificador
+    // enviado ao backend ao criar o agendamento. Como fallback, procura pelo
+    // serviço via serviceBranch.serviceId (estrutura atual) ou serviceId (legada).
+    const professionalService =
+      professionalServices.find(
+        (item: any) =>
+          professionalServiceId &&
+          String(item?.id ?? "") === String(professionalServiceId),
+      ) ??
+      professionalServices.find(
+        (item: any) =>
+          String(item?.serviceBranch?.serviceId ?? item?.serviceId ?? "") ===
+          String(serviceId ?? ""),
+      );
 
     return {
       name: service,
@@ -384,30 +406,7 @@ export default function BookingConfirmationScreen() {
         })),
       };
 
-     const appointment = await createAppointmentOrder(payload).unwrap();
-
-/*
-============================================================
-VALOR TOTAL DO AGENDAMENTO
-============================================================
-
-Tentamos primeiro pegar o valor retornado diretamente
-pelo backend.
-
-Caso a API esteja encapsulando a resposta em "data",
-pegamos appointment.data.totalPrice.
-
-Como último fallback, usamos o totalPrice calculado
-na própria tela de confirmação.
-*/
-
-const appointmentResponse = appointment as any;
-
-const confirmedTotalPrice =
-  appointmentResponse?.totalPrice ??
-  appointmentResponse?.data?.totalPrice ??
-  totalPrice;
-
+      const appointment = await createAppointmentOrder(payload).unwrap();
 
       router.replace({
         pathname: "/booking/success",
@@ -425,7 +424,6 @@ const confirmedTotalPrice =
           date: String(date),
           startTime: String(startTime),
           endTime: String(endTime),
-          totalPrice: String(confirmedTotalPrice ?? ""),
         },
       });
     } catch (error: any) {

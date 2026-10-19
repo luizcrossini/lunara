@@ -75,7 +75,7 @@ export default function AccountTypeScreen() {
             <View style={styles.optionContent}>
               <Text style={styles.optionTitle}>Tenho um negócio</Text>
               <Text style={styles.optionDescription}>
-                Quero gerenciar meu salão, clínica ou espaço de atendimento.
+                Quero gerenciar meu negócio.
               </Text>
             </View>
 

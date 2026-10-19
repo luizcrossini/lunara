@@ -10,53 +10,56 @@ import {
 } from "react-native";
 
 import { LinearGradient } from "expo-linear-gradient";
+
 import { Ionicons } from "@expo/vector-icons";
+
 import { useRouter } from "expo-router";
+
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
 import { useAuth } from "@/core/auth/auth-context";
+
 import { baseApi } from "@/core/api/baseApi";
 
 const homeApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
-    getHomeCustomers: builder.query<any, string>({
-      query: (email) => ({
-        url: "/customers",
-        params: {
-          search: email,
-          page: 1,
-          limit: 100,
-        },
+    getHomeCustomer: builder.query<any, void>({
+      query: () => ({
+        url: "/customers/me",
+        method: "GET",
       }),
     }),
 
     getHomeAppointments: builder.query<any, string>({
       query: (customerId) => ({
-        url: "/appointment-orders",
-        params: {
-          customerId,
-          page: 1,
-          limit: 100,
-        },
+        url: `/appointment-orders/customer/${customerId}`,
+        method: "GET",
+        params: { page: 1, limit: 100 },
       }),
     }),
   }),
-  overrideExisting: false,
+
+  overrideExisting: true,
 });
 
 const LUNARA_COLORS = {
   primary: "#B55A91",
+
   primaryDark: "#93436F",
+
   primaryLight: "#FCECF4",
 
   background: "#FCFAFD",
+
   white: "#FFFFFF",
 
   text: "#2E2430",
+
   textSecondary: "#7B7280",
+
   textMuted: "#A59BA6",
 
   border: "#EEE5EC",
@@ -66,39 +69,73 @@ export default function HomeScreen() {
   const router = useRouter();
 
   const { user, signOut } = useAuth();
+  function formatStoredDateTime(value: string | Date): string {
+    const date = new Date(value);
 
-  const { data: customersResponse, isLoading: customersLoading } =
-    homeApi.useGetHomeCustomersQuery(user?.email ?? "", {
-      skip: !user?.email,
-    });
+    if (Number.isNaN(date.getTime())) {
+      return "Data inválida";
+    }
 
-  const customers = Array.isArray(customersResponse)
-    ? customersResponse
-    : (customersResponse?.data?.items ??
-      customersResponse?.data ??
-      customersResponse?.items ??
-      []);
+    return new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .format(date)
+      .replace(",", " •");
+  }
 
-  const customerProfile = customers.find(
-    (customer: any) =>
-      customer?.user?.id === user?.id || customer?.userId === user?.id,
-  );
+  function formatStoredTime(value: string | Date): string {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return "Horário inválido";
+    }
+
+    return new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(date);
+  }
+  const {
+    data: customerResponse,
+    isLoading: customersLoading,
+    isError: customerError,
+  } = homeApi.useGetHomeCustomerQuery();
+
+  const customerProfile =
+    customerResponse?.data?.data ?? customerResponse?.data ?? customerResponse;
 
   const customerId = customerProfile?.id;
 
-  const { data: appointmentsResponse, isLoading: appointmentsLoading } =
-    homeApi.useGetHomeAppointmentsQuery(customerId ?? "", {
-      skip: !customerId,
-    });
+  const {
+    data: appointmentsResponse,
+    isLoading: appointmentsLoading,
+    isError: appointmentsError,
+  } = homeApi.useGetHomeAppointmentsQuery(customerId ?? "", {
+    skip: !customerId,
+  });
 
   const appointments = Array.isArray(appointmentsResponse)
     ? appointmentsResponse
-    : (appointmentsResponse?.data?.items ??
-      appointmentsResponse?.data ??
-      appointmentsResponse?.items ??
-      []);
+    : Array.isArray(appointmentsResponse?.data?.items)
+      ? appointmentsResponse.data.items
+      : Array.isArray(appointmentsResponse?.data?.data?.items)
+        ? appointmentsResponse.data.data.items
+        : Array.isArray(appointmentsResponse?.data)
+          ? appointmentsResponse.data
+          : Array.isArray(appointmentsResponse?.items)
+            ? appointmentsResponse.items
+            : [];
 
   const nextAppointment = appointments
+
     .filter((appointment: any) => {
       const date = new Date(
         appointment?.items?.[0]?.startsAt ?? appointment?.scheduledDate,
@@ -112,6 +149,7 @@ export default function HomeScreen() {
         !["CANCELLED", "COMPLETED"].includes(status)
       );
     })
+
     .sort((a: any, b: any) => {
       const dateA = new Date(
         a?.items?.[0]?.startsAt ?? a?.scheduledDate,
@@ -148,9 +186,11 @@ export default function HomeScreen() {
   const appointmentLoading = customersLoading || appointmentsLoading;
 
   const { width } = useWindowDimensions();
+
   const insets = useSafeAreaInsets();
 
   const isDesktop = width >= 768;
+
   const isSmallMobile = width < 380;
 
   const firstName = user?.name?.split(" ")[0] ?? "Usuário";
@@ -167,7 +207,9 @@ export default function HomeScreen() {
     <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
       <View style={styles.screen}>
         {/* =====================================================
+
           DESKTOP SIDEBAR
+
       ===================================================== */}
 
         {isDesktop && (
@@ -178,7 +220,9 @@ export default function HomeScreen() {
               <View style={styles.logoImageContainer}>
                 <Image
                   source={require("../../../../assets/images/logo.png")}
+
                   style={styles.logoImage}
+
                   resizeMode="contain"
                 />
               </View>
@@ -193,13 +237,17 @@ export default function HomeScreen() {
 
               <SidebarItem
                 icon="time-outline"
+
                 label="Meus agendamentos"
+
                 onPress={() => router.push("/my-appointments")}
               />
 
               <SidebarItem
                 icon="person-outline"
+
                 label="Meu perfil"
+
                 onPress={() => router.push("/profile")}
               />
             </View>
@@ -208,14 +256,18 @@ export default function HomeScreen() {
 
             <Pressable
               onPress={handleLogout}
+
               style={({ pressed }) => [
                 styles.logoutButton,
+
                 pressed && styles.buttonPressed,
               ]}
             >
               <Ionicons
                 name="log-out-outline"
+
                 size={19}
+
                 color={LUNARA_COLORS.primary}
               />
 
@@ -225,23 +277,30 @@ export default function HomeScreen() {
         )}
 
         {/* =====================================================
+
           MAIN CONTENT
+
       ===================================================== */}
 
         <View style={styles.mainArea}>
           <ScrollView
             contentContainerStyle={[
               styles.scrollContent,
+
               !isDesktop && { paddingBottom: insets.bottom + 90 },
             ]}
+
             showsVerticalScrollIndicator={false}
+
             keyboardShouldPersistTaps="handled"
           >
             <View
               style={[styles.container, isDesktop && styles.containerDesktop]}
             >
               {/* =====================================================
+
                 HEADER
+
             ===================================================== */}
 
               <View style={styles.header}>
@@ -254,79 +313,122 @@ export default function HomeScreen() {
                 </View>
 
                 {/* USER AREA */}
-                {/* 
+
+                {/*&#x20;
+
                 {isDesktop ? (
+
                   <Pressable
+
                     style={({ pressed }) => [
+
                       styles.userProfile,
+
                       pressed && styles.cardPressed,
+
                     ]}
+
                   >
+
                     <View style={styles.userAvatar}>
+
                       <Text style={styles.userAvatarText}>{userInitial}</Text>
+
                     </View>
 
                     <View style={styles.userInfo}>
+
                       <Text numberOfLines={1} style={styles.userName}>
+
                         {user?.name}
+
                       </Text>
 
                       <Text numberOfLines={1} style={styles.userEmail}>
+
                         {user?.email}
+
                       </Text>
+
                     </View>
+
                   </Pressable>
+
                 ) : (
+
                   <Pressable style={styles.notificationButton}>
+
                     <Ionicons
+
                       name="notifications-outline"
+
                       size={24}
+
                       color={LUNARA_COLORS.text}
+
                     />
 
                     <View style={styles.notificationBadge} />
+
                   </Pressable>
+
                 )} */}
               </View>
 
               {/* =====================================================
+
                 HERO
+
             ===================================================== */}
 
               <View style={styles.heroCard}>
                 <Image
                   source={require("../../../../assets/images/salon-hero.png")}
+
                   style={[
                     styles.heroImage,
+
                     !isDesktop && styles.heroImageMobile,
                   ]}
+
                   resizeMode="cover"
                 />
 
                 {/* Degradê sobre a imagem */}
+
                 <LinearGradient
                   colors={[
                     "#FFF4F9",
+
                     "rgba(255, 244, 249, 0.98)",
+
                     "rgba(255, 244, 249, 0.75)",
+
                     "rgba(255, 244, 249, 0)",
                   ]}
+
                   locations={[0, 0.42, 0.62, 1]}
+
                   start={{ x: 0, y: 0 }}
+
                   end={{ x: 1, y: 0 }}
+
                   style={styles.heroGradient}
                 />
 
                 <View
                   style={[
                     styles.heroContent,
+
                     !isDesktop && styles.heroContentMobile,
+
                     isSmallMobile && styles.heroContentSmallMobile,
                   ]}
                 >
                   <Text
                     style={[
                       styles.heroTitle,
+
                       !isDesktop && styles.heroTitleMobile,
                     ]}
                   >
@@ -336,6 +438,7 @@ export default function HomeScreen() {
                   <Text
                     style={[
                       styles.heroText,
+
                       !isDesktop && styles.heroTextMobile,
                     ]}
                   >
@@ -345,8 +448,10 @@ export default function HomeScreen() {
 
                   <Pressable
                     onPress={() => router.push("/booking")}
+
                     style={({ pressed }) => [
                       styles.heroButton,
+
                       pressed && styles.buttonPressed,
                     ]}
                   >
@@ -358,7 +463,9 @@ export default function HomeScreen() {
               </View>
 
               {/* =====================================================
+
                 PRÓXIMO AGENDAMENTO
+
             ===================================================== */}
 
               <View style={styles.section}>
@@ -372,10 +479,12 @@ export default function HomeScreen() {
 
                 <Pressable
                   onPress={() => router.push("/my-appointments")}
+
                   style={({ pressed }) => [
                     nextAppointment
                       ? styles.nextAppointment
                       : styles.emptyAppointment,
+
                     pressed && styles.cardPressed,
                   ]}
                 >
@@ -384,7 +493,9 @@ export default function HomeScreen() {
                       <View style={styles.emptyIconContainer}>
                         <Ionicons
                           name="calendar-outline"
+
                           size={32}
+
                           color={LUNARA_COLORS.primary}
                         />
                       </View>
@@ -406,7 +517,9 @@ export default function HomeScreen() {
                       <View style={styles.nextAppointmentIcon}>
                         <Ionicons
                           name="calendar-outline"
+
                           size={30}
+
                           color={LUNARA_COLORS.primary}
                         />
                       </View>
@@ -414,6 +527,7 @@ export default function HomeScreen() {
                       <View style={styles.nextAppointmentContent}>
                         <Text
                           numberOfLines={1}
+
                           style={styles.nextAppointmentService}
                         >
                           {appointmentService}
@@ -421,37 +535,24 @@ export default function HomeScreen() {
 
                         <Text
                           numberOfLines={1}
+
                           style={styles.nextAppointmentProfessional}
                         >
                           com {appointmentProfessional}
                         </Text>
 
-                        {nextAppointmentDate && (
+                        {nextAppointmentItem?.startsAt && (
                           <Text style={styles.nextAppointmentDate}>
-                            {nextAppointmentDate.toLocaleDateString("pt-BR", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                            })}{" "}
                             •{" "}
-                            {nextAppointmentDate.toLocaleTimeString("pt-BR", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                            {nextAppointmentEnd
-                              ? ` - ${nextAppointmentEnd.toLocaleTimeString(
-                                  "pt-BR",
-                                  {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  },
-                                )}`
+                            {formatStoredDateTime(nextAppointmentItem.startsAt)}
+                            {nextAppointmentItem?.endsAt
+                              ? ` - ${formatStoredTime(nextAppointmentItem.endsAt)}`
                               : ""}
                           </Text>
                         )}
-
                         <Text
                           numberOfLines={1}
+
                           style={styles.nextAppointmentBranch}
                         >
                           {appointmentBranch}
@@ -460,7 +561,9 @@ export default function HomeScreen() {
 
                       <Ionicons
                         name="chevron-forward"
+
                         size={22}
+
                         color={LUNARA_COLORS.textMuted}
                       />
                     </>
@@ -469,7 +572,9 @@ export default function HomeScreen() {
                       <View style={styles.emptyIconContainer}>
                         <Ionicons
                           name="calendar-outline"
+
                           size={32}
+
                           color={LUNARA_COLORS.primary}
                         />
                       </View>
@@ -486,7 +591,9 @@ export default function HomeScreen() {
 
                       <Ionicons
                         name="chevron-forward"
+
                         size={22}
+
                         color={LUNARA_COLORS.textMuted}
                       />
                     </>
@@ -495,7 +602,9 @@ export default function HomeScreen() {
               </View>
 
               {/* =====================================================
+
                 AÇÕES ESSENCIAIS
+
             ===================================================== */}
 
               <View style={styles.section}>
@@ -504,27 +613,37 @@ export default function HomeScreen() {
                 <View
                   style={[
                     styles.quickActions,
+
                     isDesktop && styles.quickActionsDesktop,
                   ]}
                 >
                   <QuickAction
                     icon="calendar-outline"
+
                     title="Novo agendamento"
+
                     subtitle="Escolha serviço e horário"
+
                     onPress={() => router.push("/booking")}
                   />
 
                   <QuickAction
                     icon="time-outline"
+
                     title="Meus agendamentos"
+
                     subtitle="Veja próximos e histórico"
+
                     onPress={() => router.push("/my-appointments")}
                   />
 
                   <QuickAction
                     icon="person-outline"
+
                     title="Meu perfil"
+
                     subtitle="Atualize seus dados"
+
                     onPress={() => router.push("/profile")}
                   />
                 </View>
@@ -540,34 +659,47 @@ export default function HomeScreen() {
 }
 
 /* =========================================================
+
    SIDEBAR ITEM
-========================================================= */
+
+\========================================================= */
 
 type SidebarItemProps = {
   icon: keyof typeof Ionicons.glyphMap;
+
   label: string;
+
   active?: boolean;
+
   onPress?: () => void;
 };
 
 function SidebarItem({
   icon,
+
   label,
+
   active = false,
+
   onPress,
 }: SidebarItemProps) {
   return (
     <Pressable
       onPress={onPress}
+
       style={({ pressed }) => [
         styles.sidebarItem,
+
         active && styles.sidebarItemActive,
+
         pressed && styles.cardPressed,
       ]}
     >
       <Ionicons
         name={icon}
+
         size={20}
+
         color={active ? LUNARA_COLORS.primary : LUNARA_COLORS.textSecondary}
       />
 
@@ -581,13 +713,18 @@ function SidebarItem({
 }
 
 /* =========================================================
+
    QUICK ACTION
-========================================================= */
+
+\========================================================= */
 
 type QuickActionProps = {
   icon: keyof typeof Ionicons.glyphMap;
+
   title: string;
+
   subtitle: string;
+
   onPress?: () => void;
 };
 
@@ -595,8 +732,10 @@ function QuickAction({ icon, title, subtitle, onPress }: QuickActionProps) {
   return (
     <Pressable
       onPress={onPress}
+
       style={({ pressed }) => [
         styles.quickAction,
+
         pressed && styles.cardPressed,
       ]}
     >
@@ -612,24 +751,31 @@ function QuickAction({ icon, title, subtitle, onPress }: QuickActionProps) {
 }
 
 /* =========================================================
+
    RECOMMENDATION CARD
-========================================================= */
+
+\========================================================= */
 
 type RecommendationCardProps = {
   icon: keyof typeof Ionicons.glyphMap;
+
   title: string;
+
   description: string;
 };
 
 function RecommendationCard({
   icon,
+
   title,
+
   description,
 }: RecommendationCardProps) {
   return (
     <Pressable
       style={({ pressed }) => [
         styles.recommendationCard,
+
         pressed && styles.cardPressed,
       ]}
     >
@@ -649,23 +795,30 @@ function RecommendationCard({
 }
 
 /* =========================================================
+
    STYLES
-========================================================= */
+
+\========================================================= */
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+
     backgroundColor: LUNARA_COLORS.background,
   },
 
   screen: {
     flex: 1,
+
     flexDirection: "row",
+
     backgroundColor: LUNARA_COLORS.background,
   },
 
   /* =========================
+
      SIDEBAR
+
   ========================= */
 
   sidebar: {
@@ -674,10 +827,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
 
     borderRightWidth: 1,
+
     borderRightColor: LUNARA_COLORS.border,
 
     paddingHorizontal: 20,
+
     paddingTop: 30,
+
     paddingBottom: 22,
   },
 
@@ -687,6 +843,7 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
 
     borderBottomWidth: 1,
+
     borderBottomColor: "#F3EDF2",
 
     marginBottom: 24,
@@ -694,9 +851,11 @@ const styles = StyleSheet.create({
 
   logoImageContainer: {
     width: 200,
+
     height: 170,
 
     justifyContent: "center",
+
     alignItems: "center",
 
     marginBottom: 10,
@@ -704,6 +863,7 @@ const styles = StyleSheet.create({
 
   logoImage: {
     width: "100%",
+
     height: "100%",
   },
 
@@ -711,10 +871,15 @@ const styles = StyleSheet.create({
     fontSize: 27,
 
     /*
+
      * Visual mais elegante para a marca.
+
      *
+
      * Caso você instale uma fonte customizada depois,
+
      * podemos trocar fontFamily aqui.
+
      */
 
     fontWeight: "800",
@@ -803,7 +968,9 @@ const styles = StyleSheet.create({
   },
 
   /* =========================
+
      MAIN
+
   ========================= */
 
   mainArea: {
@@ -812,6 +979,7 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     flexGrow: 1,
+
     paddingBottom: 30,
   },
 
@@ -834,7 +1002,9 @@ const styles = StyleSheet.create({
   },
 
   /* =========================
+
      HEADER
+
   ========================= */
 
   header: {
@@ -873,6 +1043,7 @@ const styles = StyleSheet.create({
 
   notificationButton: {
     width: 48,
+
     height: 48,
 
     borderRadius: 16,
@@ -880,9 +1051,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
 
     justifyContent: "center",
+
     alignItems: "center",
 
     borderWidth: 1,
+
     borderColor: LUNARA_COLORS.border,
 
     position: "relative",
@@ -892,9 +1065,11 @@ const styles = StyleSheet.create({
     position: "absolute",
 
     top: 11,
+
     right: 12,
 
     width: 7,
+
     height: 7,
 
     borderRadius: 10,
@@ -903,7 +1078,9 @@ const styles = StyleSheet.create({
   },
 
   /* =========================
+
      USER PROFILE
+
   ========================= */
 
   userProfile: {
@@ -926,11 +1103,13 @@ const styles = StyleSheet.create({
 
   userAvatar: {
     width: 44,
+
     height: 44,
 
     borderRadius: 22,
 
     justifyContent: "center",
+
     alignItems: "center",
 
     backgroundColor: "#F3DFEA",
@@ -967,24 +1146,36 @@ const styles = StyleSheet.create({
   },
 
   /* =========================
+
      HERO
+
   ========================= */
 
   heroCard: {
     position: "relative",
+
     width: "100%",
+
     minHeight: 190,
+
     borderRadius: 18,
+
     overflow: "hidden",
+
     backgroundColor: "#FFF4F9",
+
     marginBottom: 20,
   },
 
   heroImage: {
     position: "absolute",
+
     right: 0,
+
     top: 0,
+
     width: "52%",
+
     height: "100%",
   },
 
@@ -994,99 +1185,154 @@ const styles = StyleSheet.create({
 
   heroContentSmallMobile: {
     width: "70%",
+
     paddingHorizontal: 16,
+
     paddingVertical: 16,
   },
 
   heroGradient: {
     position: "absolute",
+
     top: 0,
+
     left: 0,
+
     right: 0,
+
     bottom: 0,
   },
+
   heroContent: {
     position: "absolute",
+
     zIndex: 2,
+
     left: 0,
+
     top: 0,
+
     bottom: 0,
+
     width: "52%",
+
     paddingHorizontal: 28,
+
     paddingVertical: 24,
+
     justifyContent: "center",
   },
 
   heroContentMobile: {
     width: "68%",
+
     paddingHorizontal: 20,
+
     paddingVertical: 18,
   },
 
   heroTitle: {
     fontSize: 17,
+
     fontWeight: "800",
+
     color: "#272333",
+
     marginBottom: 8,
+
     letterSpacing: -0.3,
   },
 
   heroTitleMobile: {
     fontSize: 14.5,
+
     fontWeight: "800",
+
     color: "#272333",
+
     marginBottom: 8,
+
     letterSpacing: -0.3,
   },
+
   heroTextMobile: {
     fontSize: 12.5,
+
     lineHeight: 18,
+
     color: "#403A48",
+
     marginBottom: 14,
+
     maxWidth: 170,
   },
 
   heroText: {
     fontSize: 12.5,
+
     lineHeight: 18,
+
     color: "#403A48",
+
     marginBottom: 14,
+
     maxWidth: 255,
   },
 
   heroButton: {
     alignSelf: "flex-start",
+
     minHeight: 36,
+
     paddingHorizontal: 17,
+
     paddingVertical: 9,
+
     borderRadius: 9,
+
     backgroundColor: "#C94687",
+
     flexDirection: "row",
+
     alignItems: "center",
+
     justifyContent: "center",
+
     gap: 9,
 
     shadowColor: "#C94687",
+
     shadowOffset: {
       width: 0,
+
       height: 4,
     },
+
     shadowOpacity: 0.18,
+
     shadowRadius: 7,
+
     elevation: 3,
   },
 
   heroButtonText: {
     color: "#FFFFFF",
+
     fontSize: 12,
+
     fontWeight: "700",
   },
+
   buttonPressed: {
     opacity: 0.82,
+
     transform: [{ scale: 0.98 }],
   },
+
   /* =========================
+
      SECTIONS
+
   ========================= */
 
   section: {
@@ -1120,11 +1366,14 @@ const styles = StyleSheet.create({
   },
 
   /* =========================
+
      APPOINTMENT
+
   ========================= */
 
   nextAppointment: {
     flexDirection: "row",
+
     alignItems: "center",
 
     padding: 20,
@@ -1134,6 +1383,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
 
     borderWidth: 1,
+
     borderColor: LUNARA_COLORS.border,
 
     marginBottom: 4,
@@ -1141,6 +1391,7 @@ const styles = StyleSheet.create({
 
   nextAppointmentIcon: {
     width: 58,
+
     height: 58,
 
     borderRadius: 18,
@@ -1148,6 +1399,7 @@ const styles = StyleSheet.create({
     backgroundColor: LUNARA_COLORS.primaryLight,
 
     justifyContent: "center",
+
     alignItems: "center",
 
     marginRight: 16,
@@ -1159,7 +1411,9 @@ const styles = StyleSheet.create({
 
   nextAppointmentService: {
     fontSize: 16,
+
     fontWeight: "800",
+
     color: LUNARA_COLORS.text,
 
     marginBottom: 4,
@@ -1167,6 +1421,7 @@ const styles = StyleSheet.create({
 
   nextAppointmentProfessional: {
     fontSize: 13,
+
     color: LUNARA_COLORS.textSecondary,
 
     marginBottom: 8,
@@ -1174,7 +1429,9 @@ const styles = StyleSheet.create({
 
   nextAppointmentDate: {
     fontSize: 13,
+
     fontWeight: "700",
+
     color: LUNARA_COLORS.primary,
 
     marginBottom: 4,
@@ -1182,6 +1439,7 @@ const styles = StyleSheet.create({
 
   nextAppointmentBranch: {
     fontSize: 12,
+
     color: LUNARA_COLORS.textSecondary,
   },
 
@@ -1205,6 +1463,7 @@ const styles = StyleSheet.create({
 
   emptyIconContainer: {
     width: 58,
+
     height: 58,
 
     borderRadius: 18,
@@ -1212,6 +1471,7 @@ const styles = StyleSheet.create({
     backgroundColor: LUNARA_COLORS.primaryLight,
 
     justifyContent: "center",
+
     alignItems: "center",
 
     marginRight: 16,
@@ -1244,7 +1504,9 @@ const styles = StyleSheet.create({
   },
 
   /* =========================
+
      QUICK ACTIONS
+
   ========================= */
 
   quickActions: {
@@ -1273,6 +1535,7 @@ const styles = StyleSheet.create({
 
   quickActionIcon: {
     width: 50,
+
     height: 50,
 
     borderRadius: 16,
@@ -1280,6 +1543,7 @@ const styles = StyleSheet.create({
     backgroundColor: LUNARA_COLORS.primaryLight,
 
     justifyContent: "center",
+
     alignItems: "center",
 
     marginBottom: 15,
@@ -1304,7 +1568,9 @@ const styles = StyleSheet.create({
   },
 
   /* =========================
+
      RECOMMENDATIONS
+
   ========================= */
 
   recommendations: {
@@ -1329,6 +1595,7 @@ const styles = StyleSheet.create({
 
   recommendationIcon: {
     width: 58,
+
     height: 58,
 
     borderRadius: 18,
@@ -1336,6 +1603,7 @@ const styles = StyleSheet.create({
     backgroundColor: LUNARA_COLORS.primaryLight,
 
     justifyContent: "center",
+
     alignItems: "center",
 
     marginRight: 16,
@@ -1366,7 +1634,9 @@ const styles = StyleSheet.create({
   },
 
   /* =========================
+
      INTERACTIONS
+
   ========================= */
 
   cardPressed: {
